@@ -1,7 +1,7 @@
-package main
+package demo
 
 import (
-	"fmt"
+	//"fmt"
 	"sync"
 	//"net"
 	"math/rand"
@@ -128,7 +128,7 @@ func distance(a Hash, b Hash) int {
 
 
 
-
+/*
 func main() {
 	var t table
 	t.selfID = 41
@@ -155,10 +155,11 @@ func main() {
 	for _,n := range nodes.entries{
 		fmt.Println(n.ID)
 	}
-	fmt.Println("`````")
+	fmt.Println("----")
 	fmt.Println("getaddress test:getnodeaddress(42)")
 	buckets = t.GetNodeAddress(42)
 	for _,m := range buckets{
 		fmt.Println(m)
 	}
 }
+*/
