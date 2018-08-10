@@ -2,13 +2,22 @@ package p2p
 
 import (
 	//"fmt"
+	"sync"
+	//"net"
 	//"math/rand"
+	//"log"
 )
 
 const (
 	alpha = 3
 	findsize = 16
 )
+
+type table struct {
+	bucket	[]Node
+	mutex	sync.Mutex
+	selfID	Hash
+}
 
 type Hash int
 
@@ -23,7 +32,7 @@ type nodesByDistance struct {
 }
 
 
-func GetNodeAddress(bucket []Node, targetID Hash) []Node {
+func (t *table)	GetNodeAddress(targetID Hash) []Node {
 	var (
 		asked	= make(map[Hash]bool)
 		result	*nodesByDistance
@@ -32,9 +41,11 @@ func GetNodeAddress(bucket []Node, targetID Hash) []Node {
 		pendingQueries = 0
 	)
 	
-	//asked[t.selfID] = true
+	asked[t.selfID] = true
 	
-	result = closest(bucket, targetID, findsize)
+	t.mutex.Lock()
+	result = t.closest(targetID, findsize)
+	t.mutex.Unlock()
 	
 	for _,node := range result.entries {
 		if node.ID() == targetID{
@@ -50,7 +61,7 @@ func GetNodeAddress(bucket []Node, targetID Hash) []Node {
 				//seen[n.ID] = true
 				pendingQueries++
 				
-				go findnode(n, targetID, reply)
+				go t.findnode(n, targetID, reply)
 			}
 		}
 		if pendingQueries == 0 {
@@ -68,35 +79,32 @@ func GetNodeAddress(bucket []Node, targetID Hash) []Node {
 	}
 	
 	return result.entries
-
+	
 }
 
-func findnode (n Node, targetID Hash, reply chan<- []Node){
+func (t *table) findnode(n Node, targetID Hash, reply chan<- []Node) {
+	
 	//send and receive simulation
 	nodes := make([]Node, 0, findsize)
 	/*
 	for i := 0; i < findsize; i++ {
 		x:= rand.Intn(100)
-		
-		nod := node{addr:"ha",id:Hash(x)}
-		
-		nodes = append(nodes , Node(nod))
+		node := &Node{address:"ha",ID:Hash(x)}
+		nodes = append(nodes , node)
 	}
 	*/
 	reply <- nodes
 }
 
-
-func closest(bucket []Node, target Hash, nresults int) *nodesByDistance {
+func (t *table) closest(target Hash, nresults int) *nodesByDistance {
 	closeset := &nodesByDistance{target: target}
-	for _, n := range bucket {
+	for _, n := range t.bucket {
 		if n != nil {
 			closeset.push(n, nresults)
 		}
 	}
 	return closeset
 }
-
 
 func (h *nodesByDistance) push(n Node, maxElems int) {
 	h.entries = append(h.entries,n)
@@ -121,9 +129,10 @@ func distance(a Hash, b Hash) int {
 }
 
 /*
+
 type node struct{
-		addr	string
-		id	Hash
+	addr	string
+	id	Hash
 }
 
 func (n node) address() string{
@@ -135,18 +144,17 @@ func (n node) ID() Hash{
 }
 
 func main() {
-	fmt.Println(1)
-	
-	var buckets []Node
-	
-	n1 := node{addr:"na",id:43}
-	n2 := node{addr:"na",id:44}
-	n3 := node{addr:"na",id:45}
-	n4 := node{addr:"nb",id:46}
-	n5 := node{addr:"na",id:47}
-	n6 := node{addr:"na",id:48}
-	n7 := node{addr:"na",id:49}
-	n8 := node{addr:"na",id:40}
+	var t table
+	t.selfID = 41
+	n1 := &node{addr:"na",id:43}
+	n2 := &node{addr:"na",id:44}
+	n3 := &node{addr:"na",id:45}
+	n4 := &node{addr:"nb",id:46}
+	n5 := &node{addr:"na",id:47}
+	n6 := &node{addr:"na",id:48}
+	n7 := &node{addr:"na",id:49}
+	n8 := &node{addr:"na",id:40}
+	var buckets []*node
 	buckets = append(buckets,n1)
 	buckets = append(buckets,n2)
 	buckets = append(buckets,n3)
@@ -156,9 +164,16 @@ func main() {
 	buckets = append(buckets,n7)
 	buckets = append(buckets,n8)
 	
-	n:= GetNodeAddress(buckets,42)
-	for _,m := range n{
-		fmt.Println(m)
+	for _,m := range buckets{
+		t.bucket = append(t.bucket,m)
 	}
+	
+	nodes := t.closest(46,4)
+	fmt.Println("closest test:closest(46,4)")
+	for _,n := range nodes.entries{
+		fmt.Println(n.ID())
+	}
+	
+	
 }
 */
