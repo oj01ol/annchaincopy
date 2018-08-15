@@ -19,11 +19,11 @@ type table struct {
 	selfID	Hash
 }
 
-type Hash int
+type Hash [64]byte
 
 type Node interface {
-	address()	string
-	ID()	Hash
+	GetAddr()	string
+	GetID()	Hash
 }
 
 type nodesByDistance struct {
@@ -32,6 +32,13 @@ type nodesByDistance struct {
 }
 
 
+func Newtable() (*table , error){
+	return nil,nil
+}
+
+//get node address by Nodeid
+//1.find in the bucket
+//2.findnode in the network
 func (t *table)	GetNodeAddress(targetID Hash) []Node {
 	var (
 		asked	= make(map[Hash]bool)
@@ -48,16 +55,17 @@ func (t *table)	GetNodeAddress(targetID Hash) []Node {
 	t.mutex.Unlock()
 	
 	for _,node := range result.entries {
-		if node.ID() == targetID{
+		if node.GetID() == targetID{
 			return result.entries
 		}
 	}
-	//fmt.Println(result.entries)
+	
+	
 	for {
 		for i := 0; i < len(result.entries) && pendingQueries < alpha; i++ {
 			n := result.entries[i]
-			if !asked[n.ID()] {
-				asked[n.ID()] = true
+			if !asked[n.GetID()] {
+				asked[n.GetID()] = true
 				//seen[n.ID] = true
 				pendingQueries++
 				
@@ -70,8 +78,8 @@ func (t *table)	GetNodeAddress(targetID Hash) []Node {
 		}
 		// wait for the next reply
 		for _, n := range <-reply {
-			if n != nil && !seen[n.ID()] {
-				seen[n.ID()] = true
+			if n != nil && !seen[n.GetID()] {
+				seen[n.GetID()] = true
 				result.push(n, findsize)
 			}
 		}
@@ -82,6 +90,7 @@ func (t *table)	GetNodeAddress(targetID Hash) []Node {
 	
 }
 
+//ask n for the Node info
 func (t *table) findnode(n Node, targetID Hash, reply chan<- []Node) {
 	
 	//send and receive simulation
@@ -109,7 +118,7 @@ func (t *table) closest(target Hash, nresults int) *nodesByDistance {
 func (h *nodesByDistance) push(n Node, maxElems int) {
 	h.entries = append(h.entries,n)
 	for i , node := range h.entries{
-		if distance(node.ID() , h.target) > distance(n.ID() , h.target) {
+		if distance(node.GetID() , h.target) > distance(n.GetID() , h.target) {
 			copy(h.entries[i+1:],h.entries[i:])
 			h.entries[i] = n
 			break
@@ -121,59 +130,52 @@ func (h *nodesByDistance) push(n Node, maxElems int) {
 }
 
 func distance(a Hash, b Hash) int {
-	if a > b {
-		return int(a-b)
-	}else {
-		return int(b-a)
+	lz := 0
+	for i := range a {
+		x := a[i] ^ b[i]
+		if x == 0 {
+			lz += 8
+		} else {
+			lz += lzcount[x]
+			break
+		}
 	}
-}
-
-/*
-
-type node struct{
-	addr	string
-	id	Hash
-}
-
-func (n node) address() string{
-	return n.addr
-}
-
-func (n node) ID() Hash{
-	return n.id
-}
-
-func main() {
-	var t table
-	t.selfID = 41
-	n1 := &node{addr:"na",id:43}
-	n2 := &node{addr:"na",id:44}
-	n3 := &node{addr:"na",id:45}
-	n4 := &node{addr:"nb",id:46}
-	n5 := &node{addr:"na",id:47}
-	n6 := &node{addr:"na",id:48}
-	n7 := &node{addr:"na",id:49}
-	n8 := &node{addr:"na",id:40}
-	var buckets []*node
-	buckets = append(buckets,n1)
-	buckets = append(buckets,n2)
-	buckets = append(buckets,n3)
-	buckets = append(buckets,n4)
-	buckets = append(buckets,n5)
-	buckets = append(buckets,n6)
-	buckets = append(buckets,n7)
-	buckets = append(buckets,n8)
-	
-	for _,m := range buckets{
-		t.bucket = append(t.bucket,m)
-	}
-	
-	nodes := t.closest(46,4)
-	fmt.Println("closest test:closest(46,4)")
-	for _,n := range nodes.entries{
-		fmt.Println(n.ID())
-	}
-	
+	return len(a)*8 - lz
 	
 }
-*/
+
+var lzcount = [256]int{
+	8, 7, 6, 6, 5, 5, 5, 5,
+	4, 4, 4, 4, 4, 4, 4, 4,
+	3, 3, 3, 3, 3, 3, 3, 3,
+	3, 3, 3, 3, 3, 3, 3, 3,
+	2, 2, 2, 2, 2, 2, 2, 2,
+	2, 2, 2, 2, 2, 2, 2, 2,
+	2, 2, 2, 2, 2, 2, 2, 2,
+	2, 2, 2, 2, 2, 2, 2, 2,
+	1, 1, 1, 1, 1, 1, 1, 1,
+	1, 1, 1, 1, 1, 1, 1, 1,
+	1, 1, 1, 1, 1, 1, 1, 1,
+	1, 1, 1, 1, 1, 1, 1, 1,
+	1, 1, 1, 1, 1, 1, 1, 1,
+	1, 1, 1, 1, 1, 1, 1, 1,
+	1, 1, 1, 1, 1, 1, 1, 1,
+	1, 1, 1, 1, 1, 1, 1, 1,
+	0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0,
+}
+
