@@ -20,15 +20,15 @@ func (n node) GetID() Hash{
 func Test_GetNodeAddress(t *testing.T) {
 
 	var tab table
-	tab.selfID = [64]byte{41,}
-	n1 := &node{addr:"na",id:[64]byte{43,}}
-	n2 := &node{addr:"na",id:[64]byte{44,}}
-	n3 := &node{addr:"na",id:[64]byte{45,}}
-	n4 := &node{addr:"nb",id:[64]byte{46,}}
-	n5 := &node{addr:"na",id:[64]byte{47,}}
-	n6 := &node{addr:"na",id:[64]byte{48,}}
-	n7 := &node{addr:"na",id:[64]byte{49,}}
-	n8 := &node{addr:"na",id:[64]byte{40,}}
+	tab.selfID = [20]byte{41,}
+	n1 := &node{addr:"na",id:[20]byte{43,}}
+	n2 := &node{addr:"na",id:[20]byte{44,}}
+	n3 := &node{addr:"na",id:[20]byte{45,}}
+	n4 := &node{addr:"nb",id:[20]byte{46,}}
+	n5 := &node{addr:"na",id:[20]byte{47,}}
+	n6 := &node{addr:"na",id:[20]byte{48,}}
+	n7 := &node{addr:"na",id:[20]byte{49,}}
+	n8 := &node{addr:"na",id:[20]byte{40,}}
 	var buckets []*node
 	buckets = append(buckets,n1)
 	buckets = append(buckets,n2)
@@ -43,7 +43,7 @@ func Test_GetNodeAddress(t *testing.T) {
 		tab.bucket = append(tab.bucket,m)
 	}
 	
-	b := tab.GetNodeAddress([64]byte{46,})
+	b := tab.GetNodeAddress([20]byte{46,})
 	if b[0] == n4 {
 		t.Log("test getnodeaddress pass")
 	}else {
@@ -53,15 +53,15 @@ func Test_GetNodeAddress(t *testing.T) {
 
 func Test_closest(t *testing.T) {
 	var tab table
-	tab.selfID = [64]byte{41,}
-	n1 := &node{addr:"na",id:[64]byte{43,}}
-	n2 := &node{addr:"na",id:[64]byte{44,}}
-	n3 := &node{addr:"na",id:[64]byte{45,}}
-	n4 := &node{addr:"nb",id:[64]byte{46,}}
-	n5 := &node{addr:"na",id:[64]byte{47,}}
-	n6 := &node{addr:"na",id:[64]byte{48,}}
-	n7 := &node{addr:"na",id:[64]byte{49,}}
-	n8 := &node{addr:"na",id:[64]byte{40,}}
+	tab.selfID = [20]byte{41,}
+	n1 := &node{addr:"na",id:[20]byte{43,}}
+	n2 := &node{addr:"na",id:[20]byte{44,}}
+	n3 := &node{addr:"na",id:[20]byte{45,}}
+	n4 := &node{addr:"nb",id:[20]byte{46,}}
+	n5 := &node{addr:"na",id:[20]byte{47,}}
+	n6 := &node{addr:"na",id:[20]byte{48,}}
+	n7 := &node{addr:"na",id:[20]byte{49,}}
+	n8 := &node{addr:"na",id:[20]byte{40,}}
 	var buckets []*node
 	buckets = append(buckets,n1)
 	buckets = append(buckets,n2)
@@ -76,7 +76,7 @@ func Test_closest(t *testing.T) {
 		tab.bucket = append(tab.bucket,m)
 	}
 	
-	nodes := tab.closest([64]byte{46,}, 4)
+	nodes := tab.closest([20]byte{46,}, 4)
 	if nodes.entries[0] == n4{
 		t.Log("test closest pass")
 	}else{

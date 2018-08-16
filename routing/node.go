@@ -8,7 +8,7 @@ import (
 type tNode struct {
 	Addr	string
 	ID		Hash
-	AddTime		int64
+	AddTime		int64	//time add to buckets
 	
 }
 
