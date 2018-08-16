@@ -74,22 +74,22 @@ func splitKey(key []byte) (id Hash, field string) {
 	return id , field
 }
 
-func (db *nodeDB) getNode(id Hash) *tNode {
+func (db *nodeDB) getNode(id Hash) Node {
 	dbvalue, err := db.lvl.Get(makeKey(id, nodeDBDiscoverRoot), nil)
 	if err != nil {
 		return nil
 	}
-	var node tNode
-	if err := json.Unmarshal(dbvalue, &node); err != nil {
-		log.Println("Failed to decode node json", "err", err)
+	var node *Node
+	if err := node.Unmarshal(dbvalue); err != nil {
+		log.Println("Failed to decode node", "err", err)
 		return nil
 	}
-	return &node
+	return *node
 } 
 
 
-func (db *nodeDB) updateNode(node *tNode) error{
-	dbvalue, err := json.Marshal(node)
+func (db *nodeDB) updateNode(node Node) error{
+	dbvalue, err := node.Marshal()
 	if err != nil {
 		return err
 	}
@@ -222,12 +222,12 @@ func (db *nodeDB) updateFindFails(id Hash, fails int) error {
 
 // querySeeds retrieves random nodes to be used as potential seed nodes
 // for bootstrapping.
-func (db *nodeDB) querySeeds(n int, maxAge time.Duration) []*tNode {
+func (db *nodeDB) querySeeds(n int, maxAge time.Duration) []Node {
 	var (
 		now   = time.Now()
-		nodes = make([]*tNode, 0, n)
+		nodes = make([]Node, 0, n)
 		it    = db.lvl.NewIterator(nil, nil)
-		Id    Hash
+		id    Hash
 	)
 	defer it.Release()
 
@@ -236,24 +236,24 @@ seek:
 		// Seek to a random entry. The first byte is incremented by a
 		// random amount each time in order to increase the likelihood
 		// of hitting all existing nodes in very small databases.
-		ctr := Id[0]
-		rand.Read(Id[:])
-		Id[0] = ctr + Id[0]%16
-		it.Seek(makeKey(Id, nodeDBDiscoverRoot))
+		ctr := id[0]
+		rand.Read(id[:])
+		id[0] = ctr + id[0]%16
+		it.Seek(makeKey(id, nodeDBDiscoverRoot))
 
 		n := nextNode(it)
 		if n == nil {
-			Id[0] = 0
+			id[0] = 0
 			continue seek // iterator exhausted
 		}
-		if n.ID == db.self {
+		if n.GetID() == db.self {
 			continue seek
 		}
-		if now.Sub(db.lastPongReceived(n.ID)) > maxAge {
+		if now.Sub(db.lastPongReceived(n.GetID())) > maxAge {
 			continue seek
 		}
 		for i := range nodes {
-			if nodes[i].ID == n.ID {
+			if nodes[i].GetID() == n.GetID() {
 				continue seek // duplicate
 			}
 		}
@@ -264,18 +264,18 @@ seek:
 
 // reads the next node record from the iterator, skipping over other
 // database entries.
-func nextNode(it iterator.Iterator) *tNode {
+func nextNode(it iterator.Iterator) Node {
 	for end := false; !end; end = !it.Next() {
 		id, field := splitKey(it.Key())
 		if field != nodeDBDiscoverRoot {
 			continue
 		}
-		var n tNode
-		if err := json.Unmarshal(it.Value(), &n); err != nil {
-			log.Println("Failed to decode node json", "id", id, "err", err)
+		var n *Node
+		if err := n.Unmarshal(it.Value()); err != nil {
+			log.Println("Failed to decode node", "id", id, "err", err)
 			continue
 		}
-		return &n
+		return *n	//exist problem?
 	}
 	return nil
 }
