@@ -32,6 +32,7 @@ type Table struct {
 	self	Node
 	nursery	[]Node
 	net 	transport
+	rsp		chan Packet
 }
 
 type Hash [Hashlenth]byte
@@ -53,9 +54,9 @@ type Node interface {
 }
 
 type transport interface {
-	ping(Hash, string) error
-	findNode(toid Hash, addr string, target Hash) ([]*tNode, error)
-	close()
+	Ping(Hash, string) error
+	FindNode(toid Hash, addr string, target Hash) ([]Node, error)
+	Close()
 }
 
 
@@ -65,7 +66,7 @@ type nodesByDistance struct {
 }
 
 
-func NewTable(selfID Hash, selfAddr string, nodeDBPath string, bootnodes []Node) (*Table , error){
+func NewTable(t transport, selfID Hash, selfAddr string, nodeDBPath string, bootnodes []Node) (*Table , error){
 	db, err := newNodeDB(nodeDBPath, selfID)
 	if err != nil {
 		return nil, err
@@ -73,6 +74,7 @@ func NewTable(selfID Hash, selfAddr string, nodeDBPath string, bootnodes []Node)
 	var node Node
 	n := node.Init(selfID, selfAddr)
 	tab := &Table{
+		net:	t,
 		db:		db,
 		self:	n,
 	}
@@ -179,7 +181,20 @@ func deleteNode(list []Node, n Node) []Node{
 
 func (t *Table) loop() {
 	
+	var packet Packet
+	var data 	[]byte
 	//do refresh
+	case data <- rsp :
+		err := json.Unmarshal(data, &packet)
+		switch packet.Type:
+		case findnodePacket:
+			var target Hash
+			target = packet.Data
+			nodes := t.closest(target,findsize)
+			responseData,_ := json.Marshal(findResponse{Nodes:nodes.entries})
+			t.net.Response(responseData)
+		case :
+		
 }
 
 
@@ -201,7 +216,7 @@ func (t *Table) GetNodeLocally(targetID Hash) string {
 }
 
 
-func (t *Table)	GetNodeNet(targetID Hash) []Node {
+func (t *Table)	GetNodeByNet(targetID Hash) []Node {
 	var (
 		asked	= make(map[Hash]bool)
 		result	*nodesByDistance
@@ -245,13 +260,28 @@ func (t *Table)	GetNodeNet(targetID Hash) []Node {
 	
 }
 
+
+type findResponse struct {
+	Nodes	[]Node
+}
+
+type Packet struct {
+	Type	int
+	Data	[]byte
+}
+
 //ask n for the Node info
 func (t *Table) findNode(n Node, targetID Hash, reply chan<- []Node) {
 	
 	//send and receive simulation
 	fails := t.db.findFails(n.GetID())
-	r , err := t.net.findNode(n.GetID(), n.GetAddr(), targetID)
-	if err != nil || len(r) == 0 {
+	var findrsp findResponse
+	
+	findnodeData,_ := json.Marshal(Packet{Type:findnodePacket,Data:targetID})
+	r , err := t.net.Send(n.GetAddr(), findnodeData)
+	//handle data
+	errjson := json.Unmarshal(r, &findrsp)
+	if err != nil || len(r)==0 || errjson != nil{
 		fails++
 		t.db.updateFindFails(n.GetID(), fails)
 		if fails >= maxFindFailures {
@@ -261,10 +291,11 @@ func (t *Table) findNode(n Node, targetID Hash, reply chan<- []Node) {
 		t.db.updateFindFails(n.GetID(), fails-1)
 	}
 	
-	for _, n := range r {
+	
+	for _, n := range findrsp.Nodes {
 		t.add(n)
 	}
-	reply <- r
+	reply <- findrsp.Nodes
 }
 
 func (t *Table) closest(target Hash, nresults int) *nodesByDistance {
