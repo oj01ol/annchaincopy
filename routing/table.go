@@ -5,7 +5,8 @@ import (
 	"sync"
 	"time"
 	//"net"
-	//"math/rand"
+	crand "crypto/rand"
+	"math/rand"
 	//"log"
 )
 
@@ -21,6 +22,8 @@ const (
 	seedMaxAge = 7 * 24 * time.Hour
 	maxReplacements = 10
 	bucketMinDistance = hashBits - nBuckets //0~151,152,..,160
+	refreshInterval = 30 * time.Minute
+	revalidateInterval = 30 * time.Second
 )
 
 type Table struct {
@@ -32,7 +35,9 @@ type Table struct {
 	self	Node
 	nursery	[]Node
 	net 	transport
-	rsp		chan Packet
+	closeReq   chan struct{}
+	closed     chan struct{}
+	//rsp		chan Packet
 }
 
 type Hash [Hashlenth]byte
@@ -77,12 +82,14 @@ func NewTable(t transport, selfID Hash, selfAddr string, nodeDBPath string, boot
 		net:	t,
 		db:		db,
 		self:	n,
+		closeReq:   make(chan struct{}),
+		closed:     make(chan struct{}),
 	}
 	if err := tab.setFallbackNodes(bootnodes); err != nil {
 		return nil, err
 	}
 	tab.loadSeedNodes()
-	tab.db.ensureExpirer()
+	tab.db.ensureExpirer()	//expire db
 	go tab.loop()	//0
 	return tab,nil
 }
@@ -180,24 +187,101 @@ func deleteNode(list []Node, n Node) []Node{
 }
 
 func (t *Table) loop() {
+	var (
+		revalidate	= time.NewTimer(t.nextRevalidateTime())
+		refresh		= time.NewTicker(refreshInterval)
+		revalidateDone	= make(chan struct{})
+		refreshDone		= make(chan struct{})
+	)
+	defer refresh.Stop()
+	defer revalidate.Stop()
 	
-	var packet Packet
-	var data 	[]byte
-	//do refresh
-	case data <- rsp :
-		err := json.Unmarshal(data, &packet)
-		switch packet.Type:
-		case findnodePacket:
-			var target Hash
-			target = packet.Data
-			nodes := t.closest(target,findsize)
-			responseData,_ := json.Marshal(findResponse{Nodes:nodes.entries})
-			t.net.Response(responseData)
-		case :
+	go t.doRefresh(refreshDone)
+	
+loop:
+	for {
+		select {
+		case <- refresh.C:
+			if refreshDone == nil {
+				refreshDone = make(chan struct{})
+				go t.doRefresh(refreshDone)
+			}
+		case <- refreshDone:
+			refreshDone = nil
+		case <- revalidate.C:
+			go t.doRevalidate(revalidateDone)
+		case <-revalidateDone:
+			revalidate.Reset(t.nextRevalidateTime())
+			
+		case <-t.closeReq:
+			break loop
+		
+		}
+	}
+	if t.net != nil {
+		t.net.Close()
+	}
+	if refreshDone != nil {
+		<-refreshDone
+	}
+	t.db.close()
+	close(t.closed)
 		
 }
 
 
+
+func (t *Table) nextRevalidateTime() time.Duration {
+	return time.Duration(rand.Int63n(int64(revalidateInterval)))
+}
+
+
+func (t *Table) doRefresh(done chan struct{}) {
+	defer close(done)
+	t.GetNodeByNet(t.self.GetID())
+	for i:=0; i < 3; i++ {
+		var target Hash
+		crand.Read(target[:])
+		t.GetNodeByNet(target)
+	}
+	
+}
+
+func (t *Table) doRevalidate(done chan struct{}) {
+	defer func() { done <- struct{}{} }()
+	bi := rand.Intn(len(t.buckets)) //need seeds
+	b := t.buckets[bi]
+	if len(b.entries) == 0{
+		return
+	}
+	last := b.entries[len(b.entries)-1]
+	if last == nil {
+		return
+	}
+	err:= t.net.ping(last.GetID(),last.GetAddr())
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+	b = t.buckets[bi]
+	if err == nil {
+		b.bump(last)
+		return
+	}
+	t.replace(b,last)
+	
+}
+
+func (t *Table) replace(b *bucket, last Node) Node {
+	if len(b.entries) == 0 || b.entries[len(b.entries)-1].GetID() != last.GetID() {
+		return nil
+	}
+	if len(b.replacements) == 0 {
+		b.entries = deleteNode(b.entries,last)
+		return nil
+	}
+	r := b.replacements[rand.Intn(len(b.replacements))]
+	b.entries[len(b.entries)-1] = r
+	return r
+}
 
 //get node address by Nodeid
 //1.find in the bucket
