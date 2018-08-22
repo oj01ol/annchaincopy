@@ -63,7 +63,7 @@ type Node interface {
 type transport interface {
 	Ping(Hash, string) error
 	FindNode(addr string, target Hash) ([]Node, error)
-	Close()
+	//Close()
 }
 
 type nodesByDistance struct {
