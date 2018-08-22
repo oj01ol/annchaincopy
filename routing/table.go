@@ -4,6 +4,7 @@ import (
 	//"fmt"
 	"sync"
 	"time"
+
 	//"net"
 	crand "crypto/rand"
 	"math/rand"
@@ -11,48 +12,48 @@ import (
 )
 
 const (
-	alpha = 3
-	Hashlenth = 20
-	hashBits = Hashlenth * 8
-	findsize = 16
-	bucketSize = 16
-	maxFindFailures = 5
-	nBuckets = hashBits / 15  //10
-	seedCount = 30
-	seedMaxAge = 7 * 24 * time.Hour
-	maxReplacements = 10
-	bucketMinDistance = hashBits - nBuckets //0~151,152,..,160
-	refreshInterval = 30 * time.Minute
+	alpha              = 3
+	Hashlenth          = 20
+	hashBits           = Hashlenth * 8
+	findsize           = 16
+	bucketSize         = 16
+	maxFindFailures    = 5
+	nBuckets           = hashBits / 15 //10
+	seedCount          = 30
+	seedMaxAge         = 7 * 24 * time.Hour
+	maxReplacements    = 10
+	bucketMinDistance  = hashBits - nBuckets //0~151,152,..,160
+	refreshInterval    = 30 * time.Minute
 	revalidateInterval = 30 * time.Second
 )
 
 type Table struct {
-	buckets	[nBuckets]*bucket
+	buckets [nBuckets]*bucket
 	//bucket	[]Node
-	mutex	sync.Mutex
+	mutex sync.Mutex
 	//selfID	Hash
-	db		*nodeDB
-	self	Node
-	nursery	[]Node
-	net 	transport
-	closeReq   chan struct{}
-	closed     chan struct{}
+	db       *nodeDB
+	self     Node
+	nursery  []Node
+	net      transport
+	closeReq chan struct{}
+	closed   chan struct{}
 	//rsp		chan Packet
 }
 
 type Hash [Hashlenth]byte
 
 type bucket struct {
-	entries	[]Node
-	replacements	[]Node
+	entries      []Node
+	replacements []Node
 }
 
 //node used in other modules
 type Node interface {
-	GetAddr()	string
-	GetID()	Hash
-	Marshal()	([]byte,error)
-	Unmarshal([]byte) (Node, error)
+	GetAddr() string
+	GetID() Hash
+	Marshal() ([]byte, error)
+	Unmarshal([]byte) error
 	AddedAt() time.Times
 	UpdateAddTime(time.Times) Node
 	Init(id Hash, addr string) Node
@@ -60,18 +61,16 @@ type Node interface {
 
 type transport interface {
 	Ping(Hash, string) error
-	FindNode(toid Hash, addr string, target Hash) ([]Node, error)
+	FindNode(addr string, target Hash) ([]Node, error)
 	Close()
 }
 
-
 type nodesByDistance struct {
 	entries []Node
-	target	Hash
+	target  Hash
 }
 
-
-func NewTable(t transport, selfID Hash, selfAddr string, nodeDBPath string, bootnodes []Node) (*Table , error){
+func NewTable(t transport, selfID Hash, selfAddr string, nodeDBPath string, bootnodes []Node) (*Table, error) {
 	db, err := newNodeDB(nodeDBPath, selfID)
 	if err != nil {
 		return nil, err
@@ -79,19 +78,19 @@ func NewTable(t transport, selfID Hash, selfAddr string, nodeDBPath string, boot
 	var node Node
 	n := node.Init(selfID, selfAddr)
 	tab := &Table{
-		net:	t,
-		db:		db,
-		self:	n,
-		closeReq:   make(chan struct{}),
-		closed:     make(chan struct{}),
+		net:      t,
+		db:       db,
+		self:     n,
+		closeReq: make(chan struct{}),
+		closed:   make(chan struct{}),
 	}
 	if err := tab.setFallbackNodes(bootnodes); err != nil {
 		return nil, err
 	}
 	tab.loadSeedNodes()
-	tab.db.ensureExpirer()	//expire db
-	go tab.loop()	//0
-	return tab,nil
+	tab.db.ensureExpirer() //expire db
+	go tab.loop()          //0
+	return tab, nil
 }
 
 //transfer bootnodes []*Node to nursery nodes []*tNode
@@ -103,7 +102,6 @@ func (t *Table) setFallbackNodes(nodes []Node) error {
 	}
 	return nil
 }
-
 
 func (t *Table) loadSeedNodes() {
 	seeds := t.db.querySeeds(seedCount, seedMaxAge)
@@ -117,7 +115,7 @@ func (t *Table) loadSeedNodes() {
 func (t *Table) add(n Node) {
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
-	
+
 	b := t.bucket(n.GetID())
 	if !t.bumpOrAdd(b, n) {
 		t.addReplacement(b, n)
@@ -139,28 +137,28 @@ func (t *Table) bumpOrAdd(b *bucket, n Node) bool {
 	if len(b.entries) >= bucketSize {
 		return false
 	}
-	
+
 	node := n.UpdateAddTime(time.Now())
-	b.entries = pushNode(b.entries, node, bucketSize)	
-	b.replacements = deleteNode(b.replacements, node)	
-	
+	b.entries = pushNode(b.entries, node, bucketSize)
+	b.replacements = deleteNode(b.replacements, node)
+
 	return true
-	
+
 }
 
 func (t *Table) addReplacement(b *bucket, n Node) {
 	for _, e := range b.replacements {
 		if e.GetID() == n.GetID() {
-			return 
+			return
 		}
 	}
 	b.replacements = pushNode(b.replacements, n, maxReplacements)
 }
 
 func (b *bucket) bump(n Node) bool {
-	for i:= range b.entries {
+	for i := range b.entries {
 		if b.entries[i].GetID() == n.GetID() {
-			copy(b.entries[1:],b.entries[:i])
+			copy(b.entries[1:], b.entries[:i])
 			b.entries[0] = n
 			return true
 		}
@@ -172,12 +170,12 @@ func pushNode(list []Node, n Node, max int) []Node {
 	if len(list) < max {
 		list = append(list, nil)
 	}
-	copy(list[1:],list)
+	copy(list[1:], list)
 	list[0] = n
 	return list
 }
 
-func deleteNode(list []Node, n Node) []Node{
+func deleteNode(list []Node, n Node) []Node {
 	for i := range list {
 		if list[i].GetID() == n.GetID() {
 			return append(list[:i], list[i+1:]...)
@@ -188,34 +186,34 @@ func deleteNode(list []Node, n Node) []Node{
 
 func (t *Table) loop() {
 	var (
-		revalidate	= time.NewTimer(t.nextRevalidateTime())
-		refresh		= time.NewTicker(refreshInterval)
-		revalidateDone	= make(chan struct{})
-		refreshDone		= make(chan struct{})
+		revalidate     = time.NewTimer(t.nextRevalidateTime())
+		refresh        = time.NewTicker(refreshInterval)
+		revalidateDone = make(chan struct{})
+		refreshDone    = make(chan struct{})
 	)
 	defer refresh.Stop()
 	defer revalidate.Stop()
-	
+
 	go t.doRefresh(refreshDone)
-	
+
 loop:
 	for {
 		select {
-		case <- refresh.C:
+		case <-refresh.C:
 			if refreshDone == nil {
 				refreshDone = make(chan struct{})
 				go t.doRefresh(refreshDone)
 			}
-		case <- refreshDone:
+		case <-refreshDone:
 			refreshDone = nil
-		case <- revalidate.C:
+		case <-revalidate.C:
 			go t.doRevalidate(revalidateDone)
 		case <-revalidateDone:
 			revalidate.Reset(t.nextRevalidateTime())
-			
+
 		case <-t.closeReq:
 			break loop
-		
+
 		}
 	}
 	if t.net != nil {
@@ -226,39 +224,36 @@ loop:
 	}
 	t.db.close()
 	close(t.closed)
-		
+
 }
-
-
 
 func (t *Table) nextRevalidateTime() time.Duration {
 	return time.Duration(rand.Int63n(int64(revalidateInterval)))
 }
 
-
 func (t *Table) doRefresh(done chan struct{}) {
 	defer close(done)
 	t.GetNodeByNet(t.self.GetID())
-	for i:=0; i < 3; i++ {
+	for i := 0; i < 3; i++ {
 		var target Hash
 		crand.Read(target[:])
 		t.GetNodeByNet(target)
 	}
-	
+
 }
 
 func (t *Table) doRevalidate(done chan struct{}) {
 	defer func() { done <- struct{}{} }()
 	bi := rand.Intn(len(t.buckets)) //need seeds
 	b := t.buckets[bi]
-	if len(b.entries) == 0{
+	if len(b.entries) == 0 {
 		return
 	}
 	last := b.entries[len(b.entries)-1]
 	if last == nil {
 		return
 	}
-	err:= t.net.ping(last.GetID(),last.GetAddr())
+	err := t.net.ping(last.GetID(), last.GetAddr())
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
 	b = t.buckets[bi]
@@ -266,8 +261,8 @@ func (t *Table) doRevalidate(done chan struct{}) {
 		b.bump(last)
 		return
 	}
-	t.replace(b,last)
-	
+	t.replace(b, last)
+
 }
 
 func (t *Table) replace(b *bucket, last Node) Node {
@@ -275,7 +270,7 @@ func (t *Table) replace(b *bucket, last Node) Node {
 		return nil
 	}
 	if len(b.replacements) == 0 {
-		b.entries = deleteNode(b.entries,last)
+		b.entries = deleteNode(b.entries, last)
 		return nil
 	}
 	r := b.replacements[rand.Intn(len(b.replacements))]
@@ -287,34 +282,29 @@ func (t *Table) replace(b *bucket, last Node) Node {
 //1.find in the bucket
 //2.findnode in the network
 
-func (t *Table) GetNodeLocally(targetID Hash) string {
+func (t *Table) GetNodeLocally(targetID Hash) []Node {
 	t.mutex.Lock()
 	result := t.closest(targetID, findsize)
 	t.mutex.Unlock()
-	for _,node := range result.entries {
-		if node.GetID() == targetID{
-			return node.GetAddr()
-		}
-	}
-	return nil
+
+	return result.entries
 }
 
-
-func (t *Table)	GetNodeByNet(targetID Hash) []Node {
+func (t *Table) GetNodeByNet(targetID Hash) []Node {
 	var (
-		asked	= make(map[Hash]bool)
-		result	*nodesByDistance
-		seen	= make(map[Hash]bool)
-		reply	= make(chan []Node, alpha)
+		asked          = make(map[Hash]bool)
+		result         *nodesByDistance
+		seen           = make(map[Hash]bool)
+		reply          = make(chan []Node, alpha)
 		pendingQueries = 0
 	)
-	
+
 	asked[t.self.GetID()] = true
-	
+
 	t.mutex.Lock()
 	result = t.closest(targetID, findsize)
 	t.mutex.Unlock()
-	
+
 	for {
 		for i := 0; i < len(result.entries) && pendingQueries < alpha; i++ {
 			n := result.entries[i]
@@ -322,7 +312,7 @@ func (t *Table)	GetNodeByNet(targetID Hash) []Node {
 				asked[n.GetID()] = true
 				seen[n.GetID()] = true
 				pendingQueries++
-				
+
 				go t.findNode(n, targetID, reply)
 			}
 		}
@@ -339,47 +329,35 @@ func (t *Table)	GetNodeByNet(targetID Hash) []Node {
 		}
 		pendingQueries--
 	}
-	
+
 	return result.entries
-	
-}
 
-
-type findResponse struct {
-	Nodes	[]Node
-}
-
-type Packet struct {
-	Type	int
-	Data	[]byte
 }
 
 //ask n for the Node info
 func (t *Table) findNode(n Node, targetID Hash, reply chan<- []Node) {
-	
+
 	//send and receive simulation
 	fails := t.db.findFails(n.GetID())
 	var findrsp findResponse
-	
-	findnodeData,_ := json.Marshal(Packet{Type:findnodePacket,Data:targetID})
-	r , err := t.net.Send(n.GetAddr(), findnodeData)
+
+	r, err := t.net.FindNode(n.GetAddr(), targetID)
 	//handle data
-	errjson := json.Unmarshal(r, &findrsp)
-	if err != nil || len(r)==0 || errjson != nil{
+	//errjson := json.Unmarshal(r, &findrsp)
+	if err != nil || len(r) == 0 {
 		fails++
 		t.db.updateFindFails(n.GetID(), fails)
 		if fails >= maxFindFailures {
 			t.delete(n)
 		}
-	} else if fails > 0{
+	} else if fails > 0 {
 		t.db.updateFindFails(n.GetID(), fails-1)
 	}
-	
-	
-	for _, n := range findrsp.Nodes {
+
+	for _, n := range r {
 		t.add(n)
 	}
-	reply <- findrsp.Nodes
+	reply <- r
 }
 
 func (t *Table) closest(target Hash, nresults int) *nodesByDistance {
@@ -389,7 +367,7 @@ func (t *Table) closest(target Hash, nresults int) *nodesByDistance {
 		for _, n := range b.entries {
 			if n != nil {
 				closeSet.push(n, nresults)
-			}	
+			}
 		}
 	}
 
@@ -397,10 +375,10 @@ func (t *Table) closest(target Hash, nresults int) *nodesByDistance {
 }
 
 func (h *nodesByDistance) push(n Node, maxElems int) {
-	h.entries = append(h.entries,n)
-	for i, node := range h.entries{
-		if distance(node.GetID() , h.target) > distance(n.GetID() , h.target) {
-			copy(h.entries[i+1:],h.entries[i:])
+	h.entries = append(h.entries, n)
+	for i, node := range h.entries {
+		if distance(node.GetID(), h.target) > distance(n.GetID(), h.target) {
+			copy(h.entries[i+1:], h.entries[i:])
 			h.entries[i] = n
 			break
 		}
@@ -422,7 +400,7 @@ func distance(a Hash, b Hash) int {
 		}
 	}
 	return len(a)*8 - lz
-	
+
 }
 
 var lzcount = [256]int{
@@ -459,4 +437,3 @@ var lzcount = [256]int{
 	0, 0, 0, 0, 0, 0, 0, 0,
 	0, 0, 0, 0, 0, 0, 0, 0,
 }
-

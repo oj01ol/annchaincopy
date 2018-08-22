@@ -2,26 +2,25 @@ package routing
 
 import (
 	"bytes"
-	"encoding/json"
-	"log"
 	"crypto/rand"
 	"encoding/binary"
+	"encoding/json"
+	"log"
 	"sync"
 	"time"
-	
+
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/iterator"
-	"github.com/syndtr/goleveldb/leveldb/util"
 	"github.com/syndtr/goleveldb/leveldb/storage"
-
+	"github.com/syndtr/goleveldb/leveldb/util"
 )
 
 var (
-	nodeDBNilHash      = Hash{}       // Special node ID to use as a nil element.
+	nodeDBNilHash        = Hash{}         // Special node ID to use as a nil element.
 	nodeDBNodeExpiration = 24 * time.Hour // Time after which an unseen node should be dropped.
 	nodeDBCleanupCycle   = time.Hour      // Time period for running the expiration task.
-	
-	nodeDBItemPrefix = []byte("n:")      // Identifier to prefix node entries
+
+	nodeDBItemPrefix = []byte("n:") // Identifier to prefix node entries
 
 	nodeDBDiscoverRoot      = ":discover"
 	nodeDBDiscoverPing      = nodeDBDiscoverRoot + ":lastping"
@@ -30,48 +29,47 @@ var (
 )
 
 type nodeDB struct {
-	lvl		*leveldb.DB
-	self	Hash
-	runner 	sync.Once     // Ensures we can start at most one expirer
-	quit	chan struct{}
+	lvl    *leveldb.DB
+	self   Hash
+	runner sync.Once // Ensures we can start at most one expirer
+	quit   chan struct{}
 }
 
-func newNodeDB(path string, self Hash) (*nodeDB, error){
+func newNodeDB(path string, self Hash) (*nodeDB, error) {
 	var db *leveldb.DB
 	var err error
 	if path == "" {
 		db, err = leveldb.Open(storage.NewMemStorage(), nil)
-	}else {
+	} else {
 		db, err = leveldb.OpenFile(path, nil)
 	}
 
-	if err != nil{
-		return nil,err
+	if err != nil {
+		return nil, err
 	}
 	return &nodeDB{
-		lvl:	db,
-		self:	self,
-		quit:	make(chan struct{}),
+		lvl:  db,
+		self: self,
+		quit: make(chan struct{}),
 	}, nil
 }
 
-
 func makeKey(id Hash, field string) []byte {
-	if bytes.Equal(id[:], nodeDBNilHash[:]){
+	if bytes.Equal(id[:], nodeDBNilHash[:]) {
 		return []byte(field)
 	}
-	return append(nodeDBItemPrefix,append(id[:],field...)...)
+	return append(nodeDBItemPrefix, append(id[:], field...)...)
 }
 
 func splitKey(key []byte) (id Hash, field string) {
-	if !bytes.HasPrefix(key, nodeDBItemPrefix){
-		return Hash{},string(key)
+	if !bytes.HasPrefix(key, nodeDBItemPrefix) {
+		return Hash{}, string(key)
 	}
 	item := key[len(nodeDBItemPrefix):]
-	copy(id[:],item[:len(id)])
+	copy(id[:], item[:len(id)])
 	field = string(item[len(id):])
-	
-	return id , field
+
+	return id, field
 }
 
 func (db *nodeDB) getNode(id Hash) Node {
@@ -79,16 +77,15 @@ func (db *nodeDB) getNode(id Hash) Node {
 	if err != nil {
 		return nil
 	}
-	var node *Node
+	var node Node
 	if err := node.Unmarshal(dbvalue); err != nil {
 		log.Println("Failed to decode node", "err", err)
 		return nil
 	}
-	return *node
-} 
+	return node
+}
 
-
-func (db *nodeDB) updateNode(node Node) error{
+func (db *nodeDB) updateNode(node Node) error {
 	dbvalue, err := node.Marshal()
 	if err != nil {
 		return err
@@ -118,14 +115,12 @@ func (db *nodeDB) getInt64(key []byte) int64 {
 	return val
 }
 
-
 func (db *nodeDB) storeInt64(key []byte, n int64) error {
 	dbvalue := make([]byte, binary.MaxVarintLen64)
 	dbvalue = dbvalue[:binary.PutVarint(dbvalue, n)]
-	
+
 	return db.lvl.Put(key, dbvalue, nil)
 }
-
 
 // ensureExpirer is a small helper method ensuring that the data expiration
 // mechanism is running. If the expiration goroutine is already running, this
@@ -157,7 +152,6 @@ func (db *nodeDB) expirer() {
 	}
 }
 
-
 func (db *nodeDB) expireNodes() error {
 	threshold := time.Now().Add(-nodeDBNodeExpiration)
 
@@ -182,7 +176,6 @@ func (db *nodeDB) expireNodes() error {
 	}
 	return nil
 }
-
 
 // lastPingReceived retrieves the time of the last ping packet sent by the remote node.
 func (db *nodeDB) lastPingReceived(id Hash) time.Time {
@@ -218,7 +211,6 @@ func (db *nodeDB) findFails(id Hash) int {
 func (db *nodeDB) updateFindFails(id Hash, fails int) error {
 	return db.storeInt64(makeKey(id, nodeDBDiscoverFindFails), int64(fails))
 }
-
 
 // querySeeds retrieves random nodes to be used as potential seed nodes
 // for bootstrapping.
@@ -270,12 +262,12 @@ func nextNode(it iterator.Iterator) Node {
 		if field != nodeDBDiscoverRoot {
 			continue
 		}
-		var n *Node
+		var n Node
 		if err := n.Unmarshal(it.Value()); err != nil {
 			log.Println("Failed to decode node", "id", id, "err", err)
 			continue
 		}
-		return *n	//exist problem?
+		return n //exist problem?
 	}
 	return nil
 }
@@ -285,4 +277,3 @@ func (db *nodeDB) close() {
 	close(db.quit)
 	db.lvl.Close()
 }
-
