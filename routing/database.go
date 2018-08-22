@@ -178,11 +178,13 @@ func (db *nodeDB) expireNodes() error {
 }
 
 // lastPingReceived retrieves the time of the last ping packet sent by the remote node.
+//not used
 func (db *nodeDB) lastPingReceived(id Hash) time.Time {
 	return time.Unix(db.getInt64(makeKey(id, nodeDBDiscoverPing)), 0)
 }
 
 // updateLastPing updates the last time remote node pinged us.
+//not used
 func (db *nodeDB) updateLastPingReceived(id Hash, instance time.Time) error {
 	return db.storeInt64(makeKey(id, nodeDBDiscoverPing), instance.Unix())
 }
@@ -193,6 +195,7 @@ func (db *nodeDB) lastPongReceived(id Hash) time.Time {
 }
 
 // hasBond reports whether the given node is considered bonded.
+//not used
 func (db *nodeDB) hasBond(id Hash) bool {
 	return time.Since(db.lastPongReceived(id)) < nodeDBNodeExpiration
 }

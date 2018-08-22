@@ -38,6 +38,7 @@ type Table struct {
 	net      transport
 	closeReq chan struct{}
 	closed   chan struct{}
+	//todo add seed
 	//rsp		chan Packet
 }
 
@@ -89,7 +90,7 @@ func NewTable(t transport, selfID Hash, selfAddr string, nodeDBPath string, boot
 	}
 	tab.loadSeedNodes()
 	tab.db.ensureExpirer() //expire db
-	go tab.loop()          //0
+	go tab.loop()
 	return tab, nil
 }
 
@@ -253,11 +254,12 @@ func (t *Table) doRevalidate(done chan struct{}) {
 	if last == nil {
 		return
 	}
-	err := t.net.ping(last.GetID(), last.GetAddr())
+	err := t.net.Ping(last.GetID(), last.GetAddr())
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
 	b = t.buckets[bi]
 	if err == nil {
+		t.db.updateLastPongReceived(last.GetID(), time.Now())
 		b.bump(last)
 		return
 	}
@@ -339,7 +341,7 @@ func (t *Table) findNode(n Node, targetID Hash, reply chan<- []Node) {
 
 	//send and receive simulation
 	fails := t.db.findFails(n.GetID())
-	var findrsp findResponse
+	//var findrsp findResponse
 
 	r, err := t.net.FindNode(n.GetAddr(), targetID)
 	//handle data
@@ -351,6 +353,7 @@ func (t *Table) findNode(n Node, targetID Hash, reply chan<- []Node) {
 			t.delete(n)
 		}
 	} else if fails > 0 {
+		t.db.updateLastPongReceived(n.GetID(), time.Now())
 		t.db.updateFindFails(n.GetID(), fails-1)
 	}
 
@@ -358,6 +361,12 @@ func (t *Table) findNode(n Node, targetID Hash, reply chan<- []Node) {
 		t.add(n)
 	}
 	reply <- r
+}
+
+func (t *Table) delete(n Node) {
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+	deleteNode(t.bucket(n.GetID()).entries, n)
 }
 
 func (t *Table) closest(target Hash, nresults int) *nodesByDistance {
