@@ -55,8 +55,8 @@ type Node interface {
 	GetID() Hash
 	Marshal() ([]byte, error)
 	Unmarshal([]byte) error
-	AddedAt() time.Times
-	UpdateAddTime(time.Times) Node
+	AddedAt() time.Time
+	UpdateAddTime(time.Time) Node
 	Init(id Hash, addr string) Node
 }
 
@@ -105,7 +105,7 @@ func (t *Table) setFallbackNodes(nodes []Node) error {
 }
 
 func (t *Table) loadSeedNodes() {
-	seeds := t.db.querySeeds(seedCount, seedMaxAge)
+	seeds := t.db.querySeeds(seedCount, seedMaxAge) //if reboot after one week, will get nothing
 	seeds = append(seeds, t.nursery...)
 	for i := range seeds {
 		seed := seeds[i]
@@ -339,13 +339,9 @@ func (t *Table) GetNodeByNet(targetID Hash) []Node {
 //ask n for the Node info
 func (t *Table) findNode(n Node, targetID Hash, reply chan<- []Node) {
 
-	//send and receive simulation
-	fails := t.db.findFails(n.GetID())
-	//var findrsp findResponse
-
 	r, err := t.net.FindNode(n.GetAddr(), targetID)
-	//handle data
-	//errjson := json.Unmarshal(r, &findrsp)
+	fails := t.db.findFails(n.GetID())
+
 	if err != nil || len(r) == 0 {
 		fails++
 		t.db.updateFindFails(n.GetID(), fails)

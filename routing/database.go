@@ -4,7 +4,8 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/binary"
-	"encoding/json"
+
+	//"encoding/json"
 	"log"
 	"sync"
 	"time"
@@ -90,7 +91,7 @@ func (db *nodeDB) updateNode(node Node) error {
 	if err != nil {
 		return err
 	}
-	return db.lvl.Put(makeKey(node.ID, nodeDBDiscoverRoot), dbvalue, nil)
+	return db.lvl.Put(makeKey(node.GetID(), nodeDBDiscoverRoot), dbvalue, nil)
 }
 
 func (db *nodeDB) deleteNode(id Hash) error {
