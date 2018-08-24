@@ -73,12 +73,12 @@ func splitKey(key []byte) (id Hash, field string) {
 	return id, field
 }
 
-func (db *nodeDB) getNode(id Hash) Node {
+func (db *nodeDB) getNode(id Hash) *Node {
 	dbvalue, err := db.lvl.Get(makeKey(id, nodeDBDiscoverRoot), nil)
 	if err != nil {
 		return nil
 	}
-	var node Node
+	node := &Node{}
 	if err := node.Unmarshal(dbvalue); err != nil {
 		log.Println("Failed to decode node", "err", err)
 		return nil
@@ -86,7 +86,7 @@ func (db *nodeDB) getNode(id Hash) Node {
 	return node
 }
 
-func (db *nodeDB) updateNode(node Node) error {
+func (db *nodeDB) updateNode(node *Node) error {
 	dbvalue, err := node.Marshal()
 	if err != nil {
 		return err
@@ -218,10 +218,10 @@ func (db *nodeDB) updateFindFails(id Hash, fails int) error {
 
 // querySeeds retrieves random nodes to be used as potential seed nodes
 // for bootstrapping.
-func (db *nodeDB) querySeeds(n int, maxAge time.Duration) []Node {
+func (db *nodeDB) querySeeds(n int, maxAge time.Duration) []*Node {
 	var (
 		now   = time.Now()
-		nodes = make([]Node, 0, n)
+		nodes = make([]*Node, 0, n)
 		it    = db.lvl.NewIterator(nil, nil)
 		id    Hash
 	)
@@ -260,13 +260,13 @@ seek:
 
 // reads the next node record from the iterator, skipping over other
 // database entries.
-func nextNode(it iterator.Iterator) Node {
+func nextNode(it iterator.Iterator) *Node {
 	for end := false; !end; end = !it.Next() {
 		id, field := splitKey(it.Key())
 		if field != nodeDBDiscoverRoot {
 			continue
 		}
-		var n Node
+		var n *Node
 		if err := n.Unmarshal(it.Value()); err != nil {
 			log.Println("Failed to decode node", "id", id, "err", err)
 			continue
