@@ -1,97 +1,84 @@
 package routing
 
 import (
+	"bytes"
 	"testing"
 )
 
-type node struct{
-	addr string
-	id	Hash
-}
-
-func (n node) GetAddr() string{
-	return n.addr
-}
-
-func (n node) GetID() Hash{
-	return n.id
-}
-
 func Test_GetNodeAddress(t *testing.T) {
+	var tab Table
+	tab.self.id = Hash{41}
+	n1 := &Node{addr: "na", id: Hash{43}}
+	n2 := &Node{addr: "na", id: Hash{44}}
+	n3 := &Node{addr: "na", id: Hash{45}}
+	n4 := &Node{addr: "nb", id: Hash{46}}
+	n5 := &Node{addr: "na", id: Hash{47}}
+	n6 := &Node{addr: "na", id: Hash{48}}
+	n7 := &Node{addr: "na", id: Hash{49}}
+	n8 := &Node{addr: "na", id: Hash{40}}
+	var buckets []*Node
+	buckets = append(buckets, n1)
+	buckets = append(buckets, n2)
+	buckets = append(buckets, n3)
+	buckets = append(buckets, n4)
+	buckets = append(buckets, n5)
+	buckets = append(buckets, n6)
+	buckets = append(buckets, n7)
+	buckets = append(buckets, n8)
 
-	var tab table
-	tab.selfID = [20]byte{41,}
-	n1 := &node{addr:"na",id:[20]byte{43,}}
-	n2 := &node{addr:"na",id:[20]byte{44,}}
-	n3 := &node{addr:"na",id:[20]byte{45,}}
-	n4 := &node{addr:"nb",id:[20]byte{46,}}
-	n5 := &node{addr:"na",id:[20]byte{47,}}
-	n6 := &node{addr:"na",id:[20]byte{48,}}
-	n7 := &node{addr:"na",id:[20]byte{49,}}
-	n8 := &node{addr:"na",id:[20]byte{40,}}
-	var buckets []*node
-	buckets = append(buckets,n1)
-	buckets = append(buckets,n2)
-	buckets = append(buckets,n3)
-	buckets = append(buckets,n4)
-	buckets = append(buckets,n5)
-	buckets = append(buckets,n6)
-	buckets = append(buckets,n7)
-	buckets = append(buckets,n8)
-	
-	for _,m := range buckets{
-		tab.bucket = append(tab.bucket,m)
+	for i := range buckets {
+		tab.add(buckets[i])
 	}
-	
-	b := tab.GetNodeAddress([20]byte{46,})
-	if b[0] == n4 {
+
+	b := tab.GetNodeAddress(Hash{46})
+	if b == n4.addr {
 		t.Log("test getnodeaddress pass")
-	}else {
+	} else {
 		t.Error("something wrong")
 	}
 }
 
 func Test_closest(t *testing.T) {
-	var tab table
-	tab.selfID = [20]byte{41,}
-	n1 := &node{addr:"na",id:[20]byte{43,}}
-	n2 := &node{addr:"na",id:[20]byte{44,}}
-	n3 := &node{addr:"na",id:[20]byte{45,}}
-	n4 := &node{addr:"nb",id:[20]byte{46,}}
-	n5 := &node{addr:"na",id:[20]byte{47,}}
-	n6 := &node{addr:"na",id:[20]byte{48,}}
-	n7 := &node{addr:"na",id:[20]byte{49,}}
-	n8 := &node{addr:"na",id:[20]byte{40,}}
-	var buckets []*node
-	buckets = append(buckets,n1)
-	buckets = append(buckets,n2)
-	buckets = append(buckets,n3)
-	buckets = append(buckets,n4)
-	buckets = append(buckets,n5)
-	buckets = append(buckets,n6)
-	buckets = append(buckets,n7)
-	buckets = append(buckets,n8)
-	
-	for _,m := range buckets{
-		tab.bucket = append(tab.bucket,m)
+	var tab Table
+	tab.self.id = Hash{41}
+	n1 := &Node{addr: "na", id: Hash{43}}
+	n2 := &Node{addr: "na", id: Hash{44}}
+	n3 := &Node{addr: "na", id: Hash{45}}
+	n4 := &Node{addr: "nb", id: Hash{46}}
+	n5 := &Node{addr: "na", id: Hash{47}}
+	n6 := &Node{addr: "na", id: Hash{48}}
+	n7 := &Node{addr: "na", id: Hash{49}}
+	n8 := &Node{addr: "na", id: Hash{40}}
+	var buckets []*Node
+	buckets = append(buckets, n1)
+	buckets = append(buckets, n2)
+	buckets = append(buckets, n3)
+	buckets = append(buckets, n4)
+	buckets = append(buckets, n5)
+	buckets = append(buckets, n6)
+	buckets = append(buckets, n7)
+	buckets = append(buckets, n8)
+
+	for _, m := range buckets {
+		tab.add(m)
 	}
-	
-	nodes := tab.closest([20]byte{46,}, 4)
-	if nodes.entries[0] == n4{
+
+	nodes := tab.closest(Hash{46}, 4)
+	if bytes.Equal(nodes.entries[0].id[:], n4.id[:]) {
 		t.Log("test closest pass")
-	}else{
+	} else {
 		t.Error("something wrong")
 	}
 }
 
 func Test_distance(t *testing.T) {
-	a := [64]byte{8,8,}
-	b := [64]byte{7,255,}
-	c := [64]byte{8,7,}
-	d := [64]byte{9,255,}
-	if distance(a,b) != 508 || distance(a,c) != 500 || distance(a,d) != 505{
+	a := Hash{8, 8}
+	b := Hash{7, 255}
+	c := Hash{8, 7}
+	d := Hash{9, 255}
+	if distance(a, b) != 508 || distance(a, c) != 500 || distance(a, d) != 505 {
 		t.Error("distance wrong")
-	}else{
+	} else {
 		t.Log("test distance pass")
 	}
 }
