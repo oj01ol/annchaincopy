@@ -1,12 +1,85 @@
 package routing
 
 import (
-	"testing"
 	"bytes"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"io/ioutil"
+	"math/rand"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
+var (
+	ERR_TEST_NODE_NOT_FIND = errors.New("test node not find")
+	//, _        =
+	TEST_SELF_ID   = Hash{}
+	TEST_SELF_ADDR = "127.0.0.1:666"
+	TEST_DB_NAME   = "lvdb_test"
+)
+
+func init() {
+	hash, _ := hex.DecodeString("bc977d652d1853e114ee69bfed4fdaa039149820")
+	copy(TEST_SELF_ID[:], hash)
+}
+
+type TransferForTest struct {
+	transferMap map[string]*Table // map[addr]*Table
+}
+
+func NewTransferForTest() *TransferForTest {
+	return &TransferForTest{
+		transferMap: make(map[string]*Table),
+	}
+}
+
+func (tf *TransferForTest) Ping(addr string) error {
+	if _, ok := tf.transferMap[addr]; ok {
+		return nil
+	}
+	return ERR_TEST_NODE_NOT_FIND
+}
+
+func (tf *TransferForTest) FindNode(addr string, target Hash) ([]INode, error) {
+	if t, ok := tf.transferMap[addr]; ok {
+		return t.GetNodeLocally(target), nil
+	}
+	return nil, ERR_TEST_NODE_NOT_FIND
+}
+
+func randHashForTest() (ret Hash) {
+	bs, _ := hex.DecodeString(string(hex.EncodeToString([]byte(fmt.Sprintf("%v", time.Now().UnixNano()-rand.Int63())))))
+	copy(ret[:], bs)
+	return
+}
+
+func genBootNodes(num int) []INode {
+	infos := make([]INode, num)
+	for i := range infos {
+		node := &Node{}
+		node.addr = fmt.Sprintf("10.10.10.%v:%v", rand.Intn(255), rand.Intn(25))
+		node.id = randHashForTest()
+		infos[i] = node
+		//fmt.Printf("gen nodes:%x,%v\n", infos[i].GetID(), infos[i].GetAddr())
+	}
+	return infos
+}
+
+func TestNewTable(t *testing.T) {
+	tsfer := NewTransferForTest()
+	dbpath, err := ioutil.TempDir("", TEST_DB_NAME)
+	require.Nil(t, err, "get temp dir err")
+	tb, err := NewTable(tsfer, TEST_SELF_ID, TEST_SELF_ADDR, dbpath, genBootNodes(10))
+	require.Nil(t, err, "new table err")
+	tb.Start()
+	tb.Stop()
+}
+
 var net transport
-var tab, _ = NewTable(net,Hash{41},"nc","",[]INode{})
+var tab, _ = NewTable(net, Hash{41}, "nc", "", []INode{})
 
 func Test_GetNodeLocally(t *testing.T) {
 	//tab.Start()
@@ -29,30 +102,28 @@ func Test_GetNodeLocally(t *testing.T) {
 	buckets = append(buckets, n8)
 
 	for i := range buckets {
-		if buckets[i] != nil{
+		if buckets[i] != nil {
 			tab.add(buckets[i])
 		}
 	}
 
 	b := tab.GetNodeLocally(Hash{46})
-	for _,node := range buckets {
+	for _, node := range buckets {
 		for _, n := range b {
 			if n.GetID() == node.id {
 				if n.GetAddr() != node.addr {
 					t.Error("something err")
 				}
-				t.Log("node:",node,"found")
+				t.Log("node:", node, "found")
 			}
 		}
 	}
-
 
 	t.Log("test getnodelocally pass")
 
 }
 
 func Test_closest(t *testing.T) {
-
 
 	n1 := &Node{addr: "na", id: Hash{43}}
 	n2 := &Node{addr: "na", id: Hash{44}}
