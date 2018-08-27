@@ -60,8 +60,8 @@ func genBootNodes(num int) []INode {
 	infos := make([]INode, num)
 	for i := range infos {
 		node := &Node{}
-		node.addr = fmt.Sprintf("10.10.10.%v:%v", rand.Intn(255), rand.Intn(25))
-		node.id = randHashForTest()
+		node.Addr = fmt.Sprintf("10.10.10.%v:%v", rand.Intn(255), rand.Intn(25))
+		node.ID = randHashForTest()
 		infos[i] = node
 		//fmt.Printf("gen nodes:%x,%v\n", infos[i].GetID(), infos[i].GetAddr())
 	}
@@ -83,14 +83,14 @@ var tab, _ = NewTable(net, Hash{41}, "nc", "", []INode{})
 
 func Test_GetNodeLocally(t *testing.T) {
 	//tab.Start()
-	n1 := &Node{addr: "na", id: Hash{43}}
-	n2 := &Node{addr: "na", id: Hash{44}}
-	n3 := &Node{addr: "na", id: Hash{45}}
-	n4 := &Node{addr: "nb", id: Hash{46}}
-	n5 := &Node{addr: "na", id: Hash{47}}
-	n6 := &Node{addr: "na", id: Hash{48}}
-	n7 := &Node{addr: "na", id: Hash{49}}
-	n8 := &Node{addr: "na", id: Hash{40}}
+	n1 := &Node{Addr: "na", ID: Hash{43}}
+	n2 := &Node{Addr: "na", ID: Hash{44}}
+	n3 := &Node{Addr: "na", ID: Hash{45}}
+	n4 := &Node{Addr: "nb", ID: Hash{46}}
+	n5 := &Node{Addr: "na", ID: Hash{47}}
+	n6 := &Node{Addr: "na", ID: Hash{48}}
+	n7 := &Node{Addr: "na", ID: Hash{49}}
+	n8 := &Node{Addr: "na", ID: Hash{40}}
 	var buckets []*Node
 	buckets = append(buckets, n1)
 	buckets = append(buckets, n2)
@@ -110,8 +110,8 @@ func Test_GetNodeLocally(t *testing.T) {
 	b := tab.GetNodeLocally(Hash{46})
 	for _, node := range buckets {
 		for _, n := range b {
-			if n.GetID() == node.id {
-				if n.GetAddr() != node.addr {
+			if n.GetID() == node.GetID() {
+				if n.GetAddr() != node.Addr {
 					t.Error("something err")
 				}
 				t.Log("node:", node, "found")
@@ -125,14 +125,14 @@ func Test_GetNodeLocally(t *testing.T) {
 
 func Test_closest(t *testing.T) {
 
-	n1 := &Node{addr: "na", id: Hash{43}}
-	n2 := &Node{addr: "na", id: Hash{44}}
-	n3 := &Node{addr: "na", id: Hash{45}}
-	n4 := &Node{addr: "nb", id: Hash{46}}
-	n5 := &Node{addr: "na", id: Hash{47}}
-	n6 := &Node{addr: "na", id: Hash{48}}
-	n7 := &Node{addr: "na", id: Hash{49}}
-	n8 := &Node{addr: "na", id: Hash{40}}
+	n1 := &Node{Addr: "na", ID: Hash{43}}
+	n2 := &Node{Addr: "na", ID: Hash{44}}
+	n3 := &Node{Addr: "na", ID: Hash{45}}
+	n4 := &Node{Addr: "nb", ID: Hash{46}}
+	n5 := &Node{Addr: "na", ID: Hash{47}}
+	n6 := &Node{Addr: "na", ID: Hash{48}}
+	n7 := &Node{Addr: "na", ID: Hash{49}}
+	n8 := &Node{Addr: "na", ID: Hash{40}}
 	var buckets []*Node
 	buckets = append(buckets, n1)
 	buckets = append(buckets, n2)
@@ -148,7 +148,7 @@ func Test_closest(t *testing.T) {
 	}
 
 	nodes := tab.closest(Hash{46}, 4)
-	if bytes.Equal(nodes.entries[0].id[:], n4.id[:]) {
+	if bytes.Equal(nodes.entries[0].ID[:], n4.ID[:]) {
 		t.Log("test closest pass")
 	} else {
 		t.Error("something wrong")
@@ -168,9 +168,10 @@ func Test_distance(t *testing.T) {
 }
 
 func Test_delete(t *testing.T) {
-	n5 := &Node{addr: "na", id: Hash{47}}
+
+	n5 := &Node{Addr: "na", ID: Hash{47}}
 	nodes := tab.closest(Hash{47}, 4)
-	if bytes.Equal(nodes.entries[0].id[:], n5.id[:]) {
+	if bytes.Equal(nodes.entries[0].ID[:], n5.ID[:]) {
 		t.Log("test closest pass again")
 	} else {
 		t.Error("something wrong")
@@ -178,7 +179,8 @@ func Test_delete(t *testing.T) {
 
 	tab.delete(n5)
 	nodes = tab.closest(Hash{47}, 10)
-	if bytes.Equal(nodes.entries[0].id[:], n5.id[:]) {
+
+	if bytes.Equal(nodes.entries[0].ID[:], n5.ID[:]) {
 		t.Error("something wrong")
 	} else {
 		t.Log("test delete pass")
