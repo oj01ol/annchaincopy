@@ -1,13 +1,15 @@
 package routing
 
 import (
-	"bytes"
 	"testing"
+	"bytes"
 )
 
-func Test_GetNodeAddress(t *testing.T) {
-	var tab Table
-	tab.self.id = Hash{41}
+var net transport
+var tab, _ = NewTable(net,Hash{41},"nc","",[]INode{})
+
+func Test_GetNodeLocally(t *testing.T) {
+	//tab.Start()
 	n1 := &Node{addr: "na", id: Hash{43}}
 	n2 := &Node{addr: "na", id: Hash{44}}
 	n3 := &Node{addr: "na", id: Hash{45}}
@@ -27,20 +29,31 @@ func Test_GetNodeAddress(t *testing.T) {
 	buckets = append(buckets, n8)
 
 	for i := range buckets {
-		tab.add(buckets[i])
+		if buckets[i] != nil{
+			tab.add(buckets[i])
+		}
 	}
 
-	b := tab.GetNodeAddress(Hash{46})
-	if b == n4.addr {
-		t.Log("test getnodeaddress pass")
-	} else {
-		t.Error("something wrong")
+	b := tab.GetNodeLocally(Hash{46})
+	for _,node := range buckets {
+		for _, n := range b {
+			if n.GetID() == node.id {
+				if n.GetAddr() != node.addr {
+					t.Error("something err")
+				}
+				t.Log("node:",node,"found")
+			}
+		}
 	}
+
+
+	t.Log("test getnodelocally pass")
+
 }
 
 func Test_closest(t *testing.T) {
-	var tab Table
-	tab.self.id = Hash{41}
+
+
 	n1 := &Node{addr: "na", id: Hash{43}}
 	n2 := &Node{addr: "na", id: Hash{44}}
 	n3 := &Node{addr: "na", id: Hash{45}}
@@ -76,9 +89,20 @@ func Test_distance(t *testing.T) {
 	b := Hash{7, 255}
 	c := Hash{8, 7}
 	d := Hash{9, 255}
-	if distance(a, b) != 508 || distance(a, c) != 500 || distance(a, d) != 505 {
+	if distance(a, b) != 156 || distance(a, c) != 148 || distance(a, d) != 153 {
 		t.Error("distance wrong")
 	} else {
 		t.Log("test distance pass")
+	}
+}
+
+func Test_delete(t *testing.T) {
+	n5 := &Node{addr: "na", id: Hash{47}}
+	tab.delete(n5)
+	nodes := tab.closest(Hash{47}, 10)
+	if bytes.Equal(nodes.entries[0].id[:], n5.id[:]) {
+		t.Error("something wrong")
+	} else {
+		t.Log("test delete pass")
 	}
 }

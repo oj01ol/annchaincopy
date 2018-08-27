@@ -1,8 +1,6 @@
 package routing
 
 import (
-	//"fmt"
-	"bytes"
 	"encoding/json"
 	"sync"
 	"time"
@@ -10,7 +8,6 @@ import (
 	//"net"
 	crand "crypto/rand"
 	"math/rand"
-	//"log"
 )
 
 const (
@@ -44,14 +41,6 @@ type Table struct {
 	//rsp		chan Packet
 }
 
-func (t *Table) GetNodeAddress(id Hash) string {
-	for i := range t.nursery {
-		if bytes.Equal(t.nursery[i].id[:], id[:]) {
-			return t.nursery[i].addr
-		}
-	}
-	return ""
-}
 
 type Hash = [Hashlenth]byte
 
@@ -132,6 +121,9 @@ func NewTable(t transport, selfID Hash, selfAddr string, nodeDBPath string, boot
 	}
 	if err := tab.setFallbackNodes(_inodesToNodes(bootnodes)); err != nil {
 		return nil, err
+	}
+	for i := range tab.buckets {
+		tab.buckets[i] = &bucket{}
 	}
 	tab.loadSeedNodes()
 	tab.db.ensureExpirer() //expire db
@@ -325,6 +317,7 @@ func (t *Table) replace(b *bucket, last *Node) *Node {
 		return nil
 	}
 	r := b.replacements[rand.Intn(len(b.replacements))]
+	b.replacements = deleteNode(b.replacements, r)
 	b.entries[len(b.entries)-1] = r
 	return r
 }
