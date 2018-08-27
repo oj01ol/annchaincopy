@@ -32,7 +32,7 @@ func Test_Node(t *testing.T) {
 	defer db.close()
 	Id := Hash{45}
 	//ti := time.Now()
-	node := &Node{Addr: "na", ID: Id, Time: time.Now()}
+	node := &Node{Addr: "na", ID: Id, Time: time.Now().Unix()}
 	err = db.updateNode(node)
 	require.Nil(t, err, "update node err")
 	key := makeKey(node.ID, nodeDBDiscoverRoot)
@@ -71,19 +71,19 @@ func Test_querySeeds(t *testing.T) {
 	var err error
 	have := make(map[Hash]struct{})
 	want := make(map[Hash]struct{})
-	node = &Node{Addr: "na", ID: Hash{7, 63, 74}, Time: time.Now()}
+	node = &Node{Addr: "na", ID: Hash{7, 63, 74}, Time: time.Now().Unix()}
 	err = db.updateNode(node)
 	if err != nil {
 		t.Error(err)
 	}
 	//want[node.ID] = struct{}{}
-	node = &Node{Addr: "nb", ID: Hash{4, 26, 84}, Time: time.Now()}
+	node = &Node{Addr: "nb", ID: Hash{4, 26, 84}, Time: time.Now().Unix()}
 	err = db.updateNode(node)
 	if err != nil {
 		t.Error(err)
 	}
 	want[node.ID] = struct{}{}
-	node = &Node{Addr: "nc", ID: Hash{10, 14, 24}, Time: time.Now()}
+	node = &Node{Addr: "nc", ID: Hash{10, 14, 24}, Time: time.Now().Unix()}
 	err = db.updateNode(node)
 	if err != nil {
 		t.Error(err)

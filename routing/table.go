@@ -49,7 +49,7 @@ type bucket struct {
 
 //node used in other modules
 type Node struct {
-	Time time.Time
+	Time int64
 	ID   Hash
 	Addr string
 }
@@ -73,11 +73,11 @@ func (n *Node) Unmarshal(bys []byte) error {
 }
 
 func (n *Node) AddedAt() time.Time {
-	return n.Time
+	return time.Unix(n.Time, 0)
 }
 
 func (n *Node) UpdateAddTime(time time.Time) {
-	n.Time = time
+	n.Time = time.Unix()
 }
 
 func (n *Node) GetAddr() string {
