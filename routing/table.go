@@ -5,19 +5,18 @@ import (
 	"sync"
 	"time"
 
-	//"net"
 	crand "crypto/rand"
 	"math/rand"
 )
 
 const (
 	alpha              = 3
-	Hashlenth          = 20
+	Hashlenth          = 40
 	hashBits           = Hashlenth * 8
 	findsize           = 16
 	bucketSize         = 16
 	maxFindFailures    = 5
-	nBuckets           = hashBits / 15 //10
+	nBuckets           = hashBits / 15 //10 21
 	seedCount          = 30
 	seedMaxAge         = 7 * 24 * time.Hour
 	maxReplacements    = 10
@@ -40,7 +39,6 @@ type Table struct {
 	//todo add seed
 	//rsp		chan Packet
 }
-
 
 type Hash = [Hashlenth]byte
 
