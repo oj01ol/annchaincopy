@@ -49,15 +49,15 @@ type bucket struct {
 
 //node used in other modules
 type Node struct {
-	time time.Time
-	id   Hash
-	addr string
+	Time time.Time
+	ID   Hash
+	Addr string
 }
 
 func NewNode(id Hash, addr string) *Node {
 	return &Node{
-		id:   id,
-		addr: addr,
+		ID:   id,
+		Addr: addr,
 	}
 }
 
@@ -73,19 +73,19 @@ func (n *Node) Unmarshal(bys []byte) error {
 }
 
 func (n *Node) AddedAt() time.Time {
-	return n.time
+	return n.Time
 }
 
 func (n *Node) UpdateAddTime(time time.Time) {
-	n.time = time
+	n.Time = time
 }
 
 func (n *Node) GetAddr() string {
-	return n.addr
+	return n.Addr
 }
 
 func (n *Node) GetID() Hash {
-	return n.id
+	return n.ID
 }
 
 type INode interface {
