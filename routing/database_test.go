@@ -32,13 +32,13 @@ func Test_Node(t *testing.T) {
 	defer db.close()
 	Id := Hash{45}
 	//ti := time.Now()
-	node := &Node{addr: "na", id: Id, time: time.Now()}
+	node := &Node{Addr: "na", ID: Id, Time: time.Now()}
 	err = db.updateNode(node)
 	require.Nil(t, err, "update node err")
-	key := makeKey(node.id, nodeDBDiscoverRoot)
+	key := makeKey(node.ID, nodeDBDiscoverRoot)
 	t.Log("key", key)
 	t.Log("node", node)
-	nget := db.getNode(node.id)
+	nget := db.getNode(node.ID)
 	t.Log("nget", nget)
 
 	if *node == *nget {
@@ -51,7 +51,7 @@ func Test_Node(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	nget = db.getNode(node.id)
+	nget = db.getNode(node.ID)
 	t.Log("nget", nget)
 	//db.ensureExpirer()
 	if nget == nil {
@@ -71,30 +71,30 @@ func Test_querySeeds(t *testing.T) {
 	var err error
 	have := make(map[Hash]struct{})
 	want := make(map[Hash]struct{})
-	node = &Node{addr: "na", id: Hash{7, 63, 74}, time: time.Now()}
+	node = &Node{Addr: "na", ID: Hash{7, 63, 74}, Time: time.Now()}
 	err = db.updateNode(node)
 	if err != nil {
 		t.Error(err)
 	}
-	//want[node.id] = struct{}{}
-	node = &Node{addr: "nb", id: Hash{4, 26, 84}, time: time.Now()}
+	//want[node.ID] = struct{}{}
+	node = &Node{Addr: "nb", ID: Hash{4, 26, 84}, Time: time.Now()}
 	err = db.updateNode(node)
 	if err != nil {
 		t.Error(err)
 	}
-	want[node.id] = struct{}{}
-	node = &Node{addr: "nc", id: Hash{10, 14, 24}, time: time.Now()}
+	want[node.ID] = struct{}{}
+	node = &Node{Addr: "nc", ID: Hash{10, 14, 24}, Time: time.Now()}
 	err = db.updateNode(node)
 	if err != nil {
 		t.Error(err)
 	}
-	want[node.id] = struct{}{}
+	want[node.ID] = struct{}{}
 	err = db.updateLastPongReceived(Hash{7, 63, 74}, time.Now())
 	err = db.updateLastPongReceived(Hash{4, 26, 84}, time.Now())
 	err = db.updateLastPongReceived(Hash{10, 14, 24}, time.Now())
 	nodes := db.querySeeds(4, time.Hour*12)
 	for _, node = range nodes {
-		have[node.id] = struct{}{}
+		have[node.ID] = struct{}{}
 	}
 	if len(have) != len(want) {
 		t.Error("quert count mistake")
