@@ -98,8 +98,15 @@ func Test_distance(t *testing.T) {
 
 func Test_delete(t *testing.T) {
 	n5 := &Node{addr: "na", id: Hash{47}}
+	nodes := tab.closest(Hash{47}, 4)
+	if bytes.Equal(nodes.entries[0].id[:], n5.id[:]) {
+		t.Log("test closest pass again")
+	} else {
+		t.Error("something wrong")
+	}
+
 	tab.delete(n5)
-	nodes := tab.closest(Hash{47}, 10)
+	nodes = tab.closest(Hash{47}, 10)
 	if bytes.Equal(nodes.entries[0].id[:], n5.id[:]) {
 		t.Error("something wrong")
 	} else {
