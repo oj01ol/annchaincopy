@@ -63,12 +63,14 @@ func Test_Node(t *testing.T) {
 }
 
 func Test_querySeeds(t *testing.T) {
-	path := ""
+	path, err := ioutil.TempDir("", tmpDBName)
+	require.Nil(t, err, "make tempdir err")
 	self := Hash{7, 63, 74}
-	db, _ := newNodeDB(path, self)
+	db, err := newNodeDB(path, self)
+	require.Nil(t, err, "new node db err")
 	defer db.close()
 	var node *Node
-	var err error
+
 	have := make(map[Hash]struct{})
 	want := make(map[Hash]struct{})
 	node = &Node{Addr: "na", ID: Hash{7, 63, 74}, Time: time.Now().Unix()}
@@ -77,27 +79,27 @@ func Test_querySeeds(t *testing.T) {
 		t.Error(err)
 	}
 	//want[node.ID] = struct{}{}
-	node = &Node{Addr: "nb", ID: Hash{4, 26, 84}, Time: time.Now().Unix()}
+	node = &Node{Addr: "nb", ID: Hash{24, 26, 84}, Time: time.Now().Unix()}
 	err = db.updateNode(node)
 	if err != nil {
 		t.Error(err)
 	}
 	want[node.ID] = struct{}{}
-	node = &Node{Addr: "nc", ID: Hash{10, 14, 24}, Time: time.Now().Unix()}
+	node = &Node{Addr: "nc", ID: Hash{60, 14, 24}, Time: time.Now().Unix()}
 	err = db.updateNode(node)
 	if err != nil {
 		t.Error(err)
 	}
 	want[node.ID] = struct{}{}
 	err = db.updateLastPongReceived(Hash{7, 63, 74}, time.Now())
-	err = db.updateLastPongReceived(Hash{4, 26, 84}, time.Now())
-	err = db.updateLastPongReceived(Hash{10, 14, 24}, time.Now())
-	nodes := db.querySeeds(4, time.Hour*12)
+	err = db.updateLastPongReceived(Hash{24, 26, 84}, time.Now())
+	err = db.updateLastPongReceived(Hash{60, 14, 24}, time.Now())
+	nodes := db.querySeeds(5, time.Hour*12)
 	for _, node = range nodes {
 		have[node.ID] = struct{}{}
 	}
 	if len(have) != len(want) {
-		t.Error("quert count mistake")
+		t.Error("quert count mistake","have:",len(have),"want:",len(want))
 	}
 
 	for id := range have {

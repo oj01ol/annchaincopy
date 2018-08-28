@@ -26,13 +26,18 @@ func init() {
 	copy(TEST_SELF_ID[:], hash)
 }
 
+var net transport
+var tab, _ = NewTable(net, Hash{41}, "nc", "", []INode{})
+
 type TransferForTest struct {
 	transferMap map[string]*Table // map[addr]*Table
 }
 
 func NewTransferForTest() *TransferForTest {
+	transmap := make(map[string]*Table)
+	transmap["nc"] = tab
 	return &TransferForTest{
-		transferMap: make(map[string]*Table),
+		transferMap: transmap,
 	}
 }
 
@@ -78,8 +83,6 @@ func TestNewTable(t *testing.T) {
 	tb.Stop()
 }
 
-var net transport
-var tab, _ = NewTable(net, Hash{41}, "nc", "", []INode{})
 
 func Test_GetNodeLocally(t *testing.T) {
 	//tab.Start()
@@ -160,7 +163,7 @@ func Test_distance(t *testing.T) {
 	b := Hash{7, 255}
 	c := Hash{8, 7}
 	d := Hash{9, 255}
-	if distance(a, b) != 156 || distance(a, c) != 148 || distance(a, d) != 153 {
+	if distance(a, b) != 316 || distance(a, c) != 308 || distance(a, d) != 313 {
 		t.Error("distance wrong")
 	} else {
 		t.Log("test distance pass")
@@ -185,4 +188,27 @@ func Test_delete(t *testing.T) {
 	} else {
 		t.Log("test delete pass")
 	}
+}
+
+func Test_GetNodeByNet(t *testing.T) {
+	tsfer := NewTransferForTest()
+	dbpath, err := ioutil.TempDir("", TEST_DB_NAME)
+	require.Nil(t, err, "get temp dir err")
+	tb, err := NewTable(tsfer, TEST_SELF_ID, TEST_SELF_ADDR, dbpath, genBootNodes(10))
+	require.Nil(t, err, "new table err")
+	tb.Start()
+	defer tb.Stop()
+	ntab := &Node{Addr: "nc", ID: Hash{41}}
+	tb.add(ntab)
+	Id := Hash{46}
+	nodes := tb.GetNodeByNet(Id)
+	for _,node := range nodes {
+		if node.GetID() == Id {
+			if node.GetAddr() == "nb" {
+				t.Log("test GetNodeByNet pass")
+				return
+			}
+		}
+	}
+	t.Error("not found by net")
 }

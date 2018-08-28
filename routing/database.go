@@ -237,23 +237,23 @@ seek:
 		id[0] = ctr + id[0]%16
 		it.Seek(makeKey(id, nodeDBDiscoverRoot))
 
-		n := nextNode(it)
-		if n == nil {
+		node := nextNode(it)
+		if node == nil {
 			id[0] = 0
 			continue seek // iterator exhausted
 		}
-		if n.GetID() == db.self {
+		if node.GetID() == db.self {
 			continue seek
 		}
-		if now.Sub(db.lastPongReceived(n.GetID())) > maxAge {
+		if now.Sub(db.lastPongReceived(node.GetID())) > maxAge {
 			continue seek
 		}
 		for i := range nodes {
-			if nodes[i].GetID() == n.GetID() {
+			if nodes[i].GetID() == node.GetID() {
 				continue seek // duplicate
 			}
 		}
-		nodes = append(nodes, n)
+		nodes = append(nodes, node)
 	}
 	return nodes
 }
@@ -266,12 +266,12 @@ func nextNode(it iterator.Iterator) *Node {
 		if field != nodeDBDiscoverRoot {
 			continue
 		}
-		var n *Node
+		n := &Node{}
 		if err := n.Unmarshal(it.Value()); err != nil {
 			log.Println("Failed to decode node", "id", id, "err", err)
 			continue
 		}
-		return n //exist problem?
+		return n
 	}
 	return nil
 }
