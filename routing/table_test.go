@@ -2,13 +2,13 @@ package routing
 
 import (
 	"bytes"
+	crand "crypto/rand"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"io/ioutil"
 	"math/rand"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -56,8 +56,7 @@ func (tf *TransferForTest) FindNode(addr string, target Hash) ([]INode, error) {
 }
 
 func randHashForTest() (ret Hash) {
-	bs, _ := hex.DecodeString(string(hex.EncodeToString([]byte(fmt.Sprintf("%v", time.Now().UnixNano()-rand.Int63())))))
-	copy(ret[:], bs)
+	crand.Read(ret[:])
 	return
 }
 
@@ -82,7 +81,6 @@ func TestNewTable(t *testing.T) {
 	tb.Start()
 	tb.Stop()
 }
-
 
 func Test_GetNodeLocally(t *testing.T) {
 	//tab.Start()
@@ -202,7 +200,7 @@ func Test_GetNodeByNet(t *testing.T) {
 	tb.add(ntab)
 	Id := Hash{46}
 	nodes := tb.GetNodeByNet(Id)
-	for _,node := range nodes {
+	for _, node := range nodes {
 		if node.GetID() == Id {
 			if node.GetAddr() == "nb" {
 				t.Log("test GetNodeByNet pass")
