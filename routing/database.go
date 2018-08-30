@@ -158,7 +158,6 @@ func (db *nodeDB) expireNodes() error {
 
 	// Find discovered nodes that are older than the allowance
 	it := db.lvl.NewIterator(nil, nil)
-	defer it.Release()
 
 	for it.Next() {
 		// Skip the item if not a discovery node
@@ -175,6 +174,7 @@ func (db *nodeDB) expireNodes() error {
 		// Otherwise delete all associated information
 		db.deleteNode(id)
 	}
+	it.Release()
 	return nil
 }
 
