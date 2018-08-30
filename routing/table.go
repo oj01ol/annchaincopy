@@ -7,6 +7,8 @@ import (
 
 	crand "crypto/rand"
 	"math/rand"
+	"github.com/pkg/errors"
+	"encoding/binary"
 )
 
 const (
@@ -34,9 +36,10 @@ type Table struct {
 	self     *Node
 	nursery  []*Node
 	net      transport
+	rand 	*rand.Rand
 	closeReq chan struct{}
 	closed   chan struct{}
-	//todo add seed
+
 	//rsp		chan Packet
 }
 
@@ -114,6 +117,7 @@ func NewTable(t transport, selfID Hash, selfAddr string, nodeDBPath string, boot
 		net:      t,
 		db:       db,
 		self:     n,
+		rand:	  rand.New(rand.NewSource(0)),
 		closeReq: make(chan struct{}),
 		closed:   make(chan struct{}),
 	}
@@ -123,6 +127,7 @@ func NewTable(t transport, selfID Hash, selfAddr string, nodeDBPath string, boot
 	for i := range tab.buckets {
 		tab.buckets[i] = &bucket{}
 	}
+	tab.seedRand()
 	tab.loadSeedNodes()
 	tab.db.ensureExpirer() //expire db
 	return tab, nil
@@ -155,14 +160,21 @@ func (t *Table) loadSeedNodes() {
 	}
 }
 
-func (t *Table) add(n *Node) {
+func (t *Table) add(n *Node) error {
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
-
+	if n.InComplete() {
+		return errors.New("add node incomplete")
+	}
 	b := t.bucket(n.GetID())
 	if !t.bumpOrAdd(b, n) {
 		t.addReplacement(b, n)
 	}
+	return nil
+}
+
+func (n *Node) InComplete() bool {
+	return n.GetAddr() == "" || n.GetID() == Hash{}
 }
 
 func (t *Table) bucket(id Hash) *bucket {
@@ -227,6 +239,15 @@ func deleteNode(list []*Node, n *Node) []*Node {
 	return list
 }
 
+func (t *Table) seedRand() {
+	var b [8]byte
+	crand.Read(b[:])
+
+	t.mutex.Lock()
+	t.rand.Seed(int64(binary.BigEndian.Uint64(b[:])))
+	t.mutex.Unlock()
+}
+
 func (t *Table) loop() {
 	var (
 		revalidate     = time.NewTimer(t.nextRevalidateTime())
@@ -243,6 +264,7 @@ loop:
 	for {
 		select {
 		case <-refresh.C:
+			t.seedRand()
 			if refreshDone == nil {
 				refreshDone = make(chan struct{})
 				go t.doRefresh(refreshDone)
@@ -346,6 +368,21 @@ func _inodesToNodes(inodes []INode) []*Node {
 		nodes[i] = NewNode(inodes[i].GetID(), inodes[i].GetAddr())
 	}
 	return nodes
+}
+
+func (t *Table) GetNodeAddr(targetID Hash) string {
+	nodes := t.GetNodeByNet(targetID)
+	for _, node := range nodes {
+		if targetID == node.GetID() {
+			return node.GetAddr()
+		}
+	}
+	return ""
+}
+
+func (t *Table) OnReceiveReq(node INode) error {
+	n := NewNode(node.GetID(), node.GetAddr())
+	return t.add(n)
 }
 
 func (t *Table) GetNodeByNet(targetID Hash) []*Node {
