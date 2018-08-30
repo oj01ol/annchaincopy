@@ -161,15 +161,15 @@ func (t *Table) loadSeedNodes() {
 }
 
 func (t *Table) add(n *Node) error {
-	t.mutex.Lock()
-	defer t.mutex.Unlock()
 	if n.InComplete() {
 		return errors.New("add node incomplete")
 	}
+	t.mutex.Lock()
 	b := t.bucket(n.GetID())
 	if !t.bumpOrAdd(b, n) {
 		t.addReplacement(b, n)
 	}
+	t.mutex.Unlock()
 	return nil
 }
 
@@ -255,8 +255,6 @@ func (t *Table) loop() {
 		revalidateDone = make(chan struct{})
 		refreshDone    = make(chan struct{})
 	)
-	defer refresh.Stop()
-	defer revalidate.Stop()
 
 	go t.doRefresh(refreshDone)
 
@@ -284,6 +282,8 @@ loop:
 	if refreshDone != nil {
 		<-refreshDone
 	}
+	refresh.Stop()
+	revalidate.Stop()
 	t.db.close()
 	close(t.closed)
 
@@ -294,14 +294,14 @@ func (t *Table) nextRevalidateTime() time.Duration {
 }
 
 func (t *Table) doRefresh(done chan struct{}) {
-	defer close(done)
+
 	t.GetNodeByNet(t.self.GetID())
 	for i := 0; i < 3; i++ {
 		var target Hash
 		crand.Read(target[:])
 		t.GetNodeByNet(target)
 	}
-
+	close(done)
 }
 
 func (t *Table) doRevalidate(done chan struct{}) {
@@ -456,8 +456,8 @@ func (t *Table) findNode(n *Node, targetID Hash, reply chan<- []*Node) {
 
 func (t *Table) delete(n *Node) {
 	t.mutex.Lock()
-	defer t.mutex.Unlock()
 	deleteNode(t.bucket(n.GetID()).entries, n)
+	t.mutex.Unlock()
 }
 
 func (t *Table) closest(target Hash, nresults int) *nodesByDistance {
