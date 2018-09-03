@@ -12,6 +12,7 @@ import (
 	"math/rand"
 
 	"github.com/pkg/errors"
+	"encoding/binary"
 )
 
 const (
@@ -42,6 +43,7 @@ type Table struct {
 	nursery  []*Node
 	net      transport
 	rand     *rand.Rand
+
 	closeReq chan struct{}
 	closed   chan struct{}
 
