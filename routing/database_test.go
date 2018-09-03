@@ -1,11 +1,13 @@
 package routing
 
 import (
+	"fmt"
 	"io/ioutil"
 	"testing"
 
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -15,49 +17,39 @@ const (
 
 func Test_newNodeDB(t *testing.T) {
 	path, err := ioutil.TempDir("", tmpDBName)
-	require.Nil(t, err, "make tempdir err")
+	assert.Nil(t, err, "make tempdir err")
 	self := Hash{}
 	db, err := newNodeDB(path, self)
-	require.Nil(t, err, "new node db err")
+	assert.Nil(t, err, "new node db err")
 	db.close()
 
 }
 
 func Test_Node(t *testing.T) {
 	path, err := ioutil.TempDir("", tmpDBName)
-	require.Nil(t, err, "make tempdir err")
+	assert.Nil(t, err, "make tempdir err")
 	self := Hash{}
 	db, err := newNodeDB(path, self)
-	require.Nil(t, err, "new node db err")
+	assert.Nil(t, err, "new node db err")
 	defer db.close()
-	Id := Hash{45}
 	//ti := time.Now()
-	node := &Node{Addr: "na", ID: Id, Time: time.Now().Unix()}
+	node := &Node{Addr: "na", ID: Hash{45}, Time: time.Now().Unix()}
 	err = db.updateNode(node)
 	require.Nil(t, err, "update node err")
 	key := makeKey(node.ID, nodeDBDiscoverRoot)
-	t.Log("key", key)
-	t.Log("node", node)
 	nget := db.getNode(node.ID)
-	t.Log("nget", nget)
 
-	if *node == *nget {
-		t.Log("update node test pass")
-	} else {
-		t.Error("node wrong")
+	if !node.Equal(nget) {
+		t.Error(fmt.Sprintf("node get from db wrong,key:%v\nori:%v\nget:%v", key, node, nget))
 	}
 
-	err = db.deleteNode(Id)
-	if err != nil {
-		t.Error(err)
-	}
+	err = db.deleteNode(node.ID)
+	require.Nil(t, err, "delete node err")
+
 	nget = db.getNode(node.ID)
-	t.Log("nget", nget)
 	//db.ensureExpirer()
-	if nget == nil {
-		t.Log("delete node pass")
-	} else {
-		t.Error("delete node fail: ", nget)
+	if nget != nil {
+		t.Error("delete node fail,get:%v", nget)
 	}
 
 }
@@ -99,7 +91,7 @@ func Test_querySeeds(t *testing.T) {
 		have[node.ID] = struct{}{}
 	}
 	if len(have) != len(want) {
-		t.Error("quert count mistake","have:",len(have),"want:",len(want))
+		t.Error("quert count mistake", "have:", len(have), "want:", len(want))
 	}
 
 	for id := range have {
