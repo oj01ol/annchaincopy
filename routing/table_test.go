@@ -2,13 +2,13 @@ package routing
 
 import (
 	"bytes"
+	crand "crypto/rand"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"io/ioutil"
 	"math/rand"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -56,8 +56,7 @@ func (tf *TransferForTest) FindNode(addr string, target Hash) ([]INode, error) {
 }
 
 func randHashForTest() (ret Hash) {
-	bs, _ := hex.DecodeString(string(hex.EncodeToString([]byte(fmt.Sprintf("%v", time.Now().UnixNano()-rand.Int63())))))
-	copy(ret[:], bs)
+	crand.Read(ret[:])
 	return
 }
 
@@ -82,7 +81,6 @@ func TestNewTable(t *testing.T) {
 	tb.Start()
 	tb.Stop()
 }
-
 
 func Test_GetNodeLocally(t *testing.T) {
 	//tab.Start()
@@ -115,15 +113,12 @@ func Test_GetNodeLocally(t *testing.T) {
 		for _, n := range b {
 			if n.GetID() == node.GetID() {
 				if n.GetAddr() != node.Addr {
-					t.Error("something err")
+					t.Errorf("addr not equal,id:%v,ori:%v,get:%v", n.GetID(), node.Addr, n.GetAddr())
 				}
-				t.Log("node:", node, "found")
 			}
+
 		}
 	}
-
-	t.Log("test getnodelocally pass")
-
 }
 
 func Test_closest(t *testing.T) {
@@ -151,10 +146,8 @@ func Test_closest(t *testing.T) {
 	}
 
 	nodes := tab.closest(Hash{46}, 4)
-	if bytes.Equal(nodes.entries[0].ID[:], n4.ID[:]) {
-		t.Log("test closest pass")
-	} else {
-		t.Error("something wrong")
+	if !bytes.Equal(nodes.entries[0].ID[:], n4.ID[:]) {
+		t.Errorf("wrong nodes closest id, get:%x,expected:%x", nodes.entries[0].ID[:], n4.ID[:])
 	}
 }
 
@@ -165,8 +158,6 @@ func Test_distance(t *testing.T) {
 	d := Hash{9, 255}
 	if distance(a, b) != 316 || distance(a, c) != 308 || distance(a, d) != 313 {
 		t.Error("distance wrong")
-	} else {
-		t.Log("test distance pass")
 	}
 }
 
@@ -174,10 +165,8 @@ func Test_delete(t *testing.T) {
 
 	n5 := &Node{Addr: "na", ID: Hash{47}}
 	nodes := tab.closest(Hash{47}, 4)
-	if bytes.Equal(nodes.entries[0].ID[:], n5.ID[:]) {
-		t.Log("test closest pass again")
-	} else {
-		t.Error("something wrong")
+	if !bytes.Equal(nodes.entries[0].ID[:], n5.ID[:]) {
+		t.Errorf("wrong nodes closest id, get:%x,expected:%x", nodes.entries[0].ID[:], n5.ID[:])
 	}
 
 	tab.delete(n5)
@@ -185,8 +174,6 @@ func Test_delete(t *testing.T) {
 
 	if bytes.Equal(nodes.entries[0].ID[:], n5.ID[:]) {
 		t.Error("something wrong")
-	} else {
-		t.Log("test delete pass")
 	}
 }
 
@@ -202,10 +189,9 @@ func Test_GetNodeByNet(t *testing.T) {
 	tb.add(ntab)
 	Id := Hash{46}
 	nodes := tb.GetNodeByNet(Id)
-	for _,node := range nodes {
+	for _, node := range nodes {
 		if node.GetID() == Id {
 			if node.GetAddr() == "nb" {
-				t.Log("test GetNodeByNet pass")
 				return
 			}
 		}

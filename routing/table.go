@@ -1,12 +1,16 @@
 package routing
 
 import (
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"sync"
 	"time"
 
 	crand "crypto/rand"
+	"encoding/binary"
 	"math/rand"
+
 	"github.com/pkg/errors"
 	"encoding/binary"
 )
@@ -27,6 +31,8 @@ const (
 	revalidateInterval = 30 * time.Second
 )
 
+type Hash = [Hashlenth]byte
+
 type Table struct {
 	buckets [nBuckets]*bucket
 	//bucket	[]Node
@@ -36,18 +42,34 @@ type Table struct {
 	self     *Node
 	nursery  []*Node
 	net      transport
-	rand 	*rand.Rand
+	rand     *rand.Rand
+
 	closeReq chan struct{}
 	closed   chan struct{}
 
 	//rsp		chan Packet
 }
 
-type Hash = [Hashlenth]byte
-
 type bucket struct {
 	entries      []*Node
 	replacements []*Node
+}
+
+// TODO use buffer
+func (b *bucket) String() string {
+	str := "entries"
+	for i := range b.entries {
+		if i == 0 {
+			str = fmt.Sprintf("%v\n:node[%v]:%v", str, i, b.entries[i].String())
+		} else {
+			str = fmt.Sprintf("%v,node[%v]:%v", str, i, b.entries[i].String())
+		}
+	}
+	str = fmt.Sprintf("%v\nreplacements:\n", str)
+	for i := range b.replacements {
+		str = fmt.Sprintf("%v,node[%v]:%v", str, i, b.entries[i].String())
+	}
+	return str
 }
 
 //node used in other modules
@@ -62,6 +84,10 @@ func NewNode(id Hash, addr string) *Node {
 		ID:   id,
 		Addr: addr,
 	}
+}
+
+func (n *Node) Equal(nn *Node) bool {
+	return n.Time == nn.Time && n.ID == nn.ID && n.Addr == nn.Addr
 }
 
 func (n *Node) Marshal() ([]byte, error) {
@@ -91,6 +117,46 @@ func (n *Node) GetID() Hash {
 	return n.ID
 }
 
+func (n *Node) String() string {
+	return fmt.Sprintf("ID:%x,Addr:%v,Time:%v", n.ID, n.Addr, n.Time)
+}
+
+func (n *Node) MarshalJSON() ([]byte, error) {
+	st := struct {
+		Time string
+		ID   string
+		Addr string
+	}{
+		Time: time.Unix(n.Time, 0).Format(time.RFC3339),
+		ID:   fmt.Sprintf("%x", n.ID),
+		Addr: n.Addr,
+	}
+	return json.Marshal(&st)
+}
+
+func (n *Node) UnmarshalJSON(bys []byte) error {
+	st := struct {
+		Time string
+		ID   string
+		Addr string
+	}{}
+	if err := json.Unmarshal(bys, &st); err != nil {
+		return err
+	}
+	idbys, err := hex.DecodeString(st.ID)
+	if err != nil {
+		return err
+	}
+	copy(n.ID[:], idbys)
+	ttm, err := time.Parse(time.RFC3339, st.Time)
+	if err != nil {
+		return err
+	}
+	n.Time = ttm.Unix()
+	n.Addr = st.Addr
+	return nil
+}
+
 type INode interface {
 	GetAddr() string
 	GetID() Hash
@@ -117,7 +183,7 @@ func NewTable(t transport, selfID Hash, selfAddr string, nodeDBPath string, boot
 		net:      t,
 		db:       db,
 		self:     n,
-		rand:	  rand.New(rand.NewSource(0)),
+		rand:     rand.New(rand.NewSource(0)),
 		closeReq: make(chan struct{}),
 		closed:   make(chan struct{}),
 	}
@@ -139,6 +205,33 @@ func (t *Table) Start() {
 
 func (t *Table) Stop() {
 	t.closeReq <- struct{}{}
+}
+
+func (t *Table) String() string {
+	//str := "buckets"
+	//for i := range t.buckets {
+	//	if i == 0 {
+	//		str = fmt.Sprintf("%v:\nbuckets[%v]:%v\n", str, i, t.buckets[i].String())
+	//	} else {
+	//		str = fmt.Sprintf("%v,buckets[%v]:%v\n", str, i, t.buckets[i].String())
+	//	}
+	//}
+	//return str
+
+	type stBucks struct {
+		Entries      []*Node
+		Replacements []*Node
+	}
+	itab := struct {
+		Buckets []stBucks
+	}{}
+	itab.Buckets = make([]stBucks, len(t.buckets))
+	for i := range itab.Buckets {
+		itab.Buckets[i].Entries = t.buckets[i].entries
+		itab.Buckets[i].Replacements = t.buckets[i].replacements
+	}
+	jsonBytes, _ := json.Marshal(&itab)
+	return string(jsonBytes)
 }
 
 //transfer bootnodes []*Node to nursery nodes []*tNode
