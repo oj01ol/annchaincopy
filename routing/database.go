@@ -16,19 +16,6 @@ import (
 	"github.com/syndtr/goleveldb/leveldb/util"
 )
 
-var (
-	nodeDBNilHash        = Hash{}         // Special node ID to use as a nil element.
-	nodeDBNodeExpiration = 24 * time.Hour // Time after which an unseen node should be dropped.
-	nodeDBCleanupCycle   = time.Hour      // Time period for running the expiration task.
-
-	nodeDBItemPrefix = []byte("n:") // Identifier to prefix node entries
-
-	nodeDBDiscoverRoot      = ":discover"
-	nodeDBDiscoverPing      = nodeDBDiscoverRoot + ":lastping"
-	nodeDBDiscoverPong      = nodeDBDiscoverRoot + ":lastpong"
-	nodeDBDiscoverFindFails = nodeDBDiscoverRoot + ":findfail"
-)
-
 type nodeDB struct {
 	lvl    *leveldb.DB
 	self   Hash
@@ -56,25 +43,25 @@ func newNodeDB(path string, self Hash) (*nodeDB, error) {
 }
 
 func makeKey(id Hash, field string) []byte {
-	if bytes.Equal(id[:], nodeDBNilHash[:]) {
+	if id.Equal(dbc.nodeDBNilHash) {
 		return []byte(field)
 	}
-	return append(nodeDBItemPrefix, append(id[:], field...)...)
+	return append(dbc.nodeDBItemPrefix, append(id[:], field...)...)
 }
 
 func splitKey(key []byte) (id Hash, field string) {
-	if !bytes.HasPrefix(key, nodeDBItemPrefix) {
-		return Hash{}, string(key)
+	if !bytes.HasPrefix(key, dbc.nodeDBItemPrefix) {
+		return nil, string(key)
 	}
-	item := key[len(nodeDBItemPrefix):]
-	copy(id[:], item[:len(id)])
+	item := key[len(dbc.nodeDBItemPrefix):]
+	id.Copy(item)
 	field = string(item[len(id):])
 
 	return id, field
 }
 
 func (db *nodeDB) getNode(id Hash) *Node {
-	dbvalue, err := db.lvl.Get(makeKey(id, nodeDBDiscoverRoot), nil)
+	dbvalue, err := db.lvl.Get(makeKey(id, dbc.nodeDBDiscoverRoot), nil)
 	if err != nil {
 		return nil
 	}
@@ -91,7 +78,7 @@ func (db *nodeDB) updateNode(node *Node) error {
 	if err != nil {
 		return err
 	}
-	return db.lvl.Put(makeKey(node.GetID(), nodeDBDiscoverRoot), dbvalue, nil)
+	return db.lvl.Put(makeKey(node.GetID(), dbc.nodeDBDiscoverRoot), dbvalue, nil)
 }
 
 func (db *nodeDB) deleteNode(id Hash) error {
@@ -139,7 +126,7 @@ func (db *nodeDB) ensureExpirer() {
 // expirer should be started in a go routine, and is responsible for looping ad
 // infinitum and dropping stale data from the database.
 func (db *nodeDB) expirer() {
-	tick := time.NewTicker(nodeDBCleanupCycle)
+	tick := time.NewTicker(dbc.nodeDBCleanupCycle)
 	defer tick.Stop()
 	for {
 		select {
@@ -154,7 +141,7 @@ func (db *nodeDB) expirer() {
 }
 
 func (db *nodeDB) expireNodes() error {
-	threshold := time.Now().Add(-nodeDBNodeExpiration)
+	threshold := time.Now().Add(-dbc.nodeDBNodeExpiration)
 
 	// Find discovered nodes that are older than the allowance
 	it := db.lvl.NewIterator(nil, nil)
@@ -162,7 +149,7 @@ func (db *nodeDB) expireNodes() error {
 	for it.Next() {
 		// Skip the item if not a discovery node
 		id, field := splitKey(it.Key())
-		if field != nodeDBDiscoverRoot {
+		if field != dbc.nodeDBDiscoverRoot {
 			continue
 		}
 		// Skip the node if not expired yet (and not self)
@@ -181,39 +168,39 @@ func (db *nodeDB) expireNodes() error {
 // lastPingReceived retrieves the time of the last ping packet sent by the remote node.
 //not used
 func (db *nodeDB) lastPingReceived(id Hash) time.Time {
-	return time.Unix(db.getInt64(makeKey(id, nodeDBDiscoverPing)), 0)
+	return time.Unix(db.getInt64(makeKey(id, dbc.nodeDBDiscoverPing)), 0)
 }
 
 // updateLastPing updates the last time remote node pinged us.
 //not used
 func (db *nodeDB) updateLastPingReceived(id Hash, instance time.Time) error {
-	return db.storeInt64(makeKey(id, nodeDBDiscoverPing), instance.Unix())
+	return db.storeInt64(makeKey(id, dbc.nodeDBDiscoverPing), instance.Unix())
 }
 
 // lastPongReceived retrieves the time of the last successful pong from remote node.
 func (db *nodeDB) lastPongReceived(id Hash) time.Time {
-	return time.Unix(db.getInt64(makeKey(id, nodeDBDiscoverPong)), 0)
+	return time.Unix(db.getInt64(makeKey(id, dbc.nodeDBDiscoverPong)), 0)
 }
 
 // hasBond reports whether the given node is considered bonded.
 //not used
 func (db *nodeDB) hasBond(id Hash) bool {
-	return time.Since(db.lastPongReceived(id)) < nodeDBNodeExpiration
+	return time.Since(db.lastPongReceived(id)) < dbc.nodeDBNodeExpiration
 }
 
 // updateLastPongReceived updates the last pong time of a node.
 func (db *nodeDB) updateLastPongReceived(id Hash, instance time.Time) error {
-	return db.storeInt64(makeKey(id, nodeDBDiscoverPong), instance.Unix())
+	return db.storeInt64(makeKey(id, dbc.nodeDBDiscoverPong), instance.Unix())
 }
 
 // findFails retrieves the number of findnode failures since bonding.
 func (db *nodeDB) findFails(id Hash) int {
-	return int(db.getInt64(makeKey(id, nodeDBDiscoverFindFails)))
+	return int(db.getInt64(makeKey(id, dbc.nodeDBDiscoverFindFails)))
 }
 
 // updateFindFails updates the number of findnode failures since bonding.
 func (db *nodeDB) updateFindFails(id Hash, fails int) error {
-	return db.storeInt64(makeKey(id, nodeDBDiscoverFindFails), int64(fails))
+	return db.storeInt64(makeKey(id, dbc.nodeDBDiscoverFindFails), int64(fails))
 }
 
 // querySeeds retrieves random nodes to be used as potential seed nodes
@@ -223,9 +210,8 @@ func (db *nodeDB) querySeeds(n int, maxAge time.Duration) []*Node {
 		now   = time.Now()
 		nodes = make([]*Node, 0, n)
 		it    = db.lvl.NewIterator(nil, nil)
-		id    Hash
+		id    = NewHash()
 	)
-	defer it.Release()
 
 seek:
 	for seeks := 0; len(nodes) < n && seeks < n*5; seeks++ {
@@ -235,26 +221,27 @@ seek:
 		ctr := id[0]
 		rand.Read(id[:])
 		id[0] = ctr + id[0]%16
-		it.Seek(makeKey(id, nodeDBDiscoverRoot))
+		it.Seek(makeKey(id, dbc.nodeDBDiscoverRoot))
 
 		node := nextNode(it)
 		if node == nil {
 			id[0] = 0
 			continue seek // iterator exhausted
 		}
-		if node.GetID() == db.self {
+		if node.GetID().Equal(db.self) {
 			continue seek
 		}
 		if now.Sub(db.lastPongReceived(node.GetID())) > maxAge {
 			continue seek
 		}
 		for i := range nodes {
-			if nodes[i].GetID() == node.GetID() {
+			if nodes[i].GetID().Equal(node.GetID()) {
 				continue seek // duplicate
 			}
 		}
 		nodes = append(nodes, node)
 	}
+	it.Release()
 	return nodes
 }
 
@@ -263,7 +250,7 @@ seek:
 func nextNode(it iterator.Iterator) *Node {
 	for end := false; !end; end = !it.Next() {
 		id, field := splitKey(it.Key())
-		if field != nodeDBDiscoverRoot {
+		if field != dbc.nodeDBDiscoverRoot {
 			continue
 		}
 		n := &Node{}

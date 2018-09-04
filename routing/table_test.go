@@ -8,55 +8,78 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math/rand"
+	"os"
+	"sync"
 	"testing"
+	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 var (
 	ERR_TEST_NODE_NOT_FIND = errors.New("test node not find")
 	//, _        =
-	TEST_SELF_ID   = Hash{}
+	TEST_SELF_ID   Hash
 	TEST_SELF_ADDR = "127.0.0.1:666"
 	TEST_DB_NAME   = "lvdb_test"
+	net            transport
+	inited         bool
+	TMP_DIR        = "./tmp_dir_for_test"
 )
 
-func init() {
-	hash, _ := hex.DecodeString("bc977d652d1853e114ee69bfed4fdaa039149820")
-	copy(TEST_SELF_ID[:], hash)
-}
+func initTest() {
+	if inited {
+		return
+	}
+	inited = true
 
-var net transport
-var tab, _ = NewTable(net, Hash{41}, "nc", "", []INode{})
+	initConfig()
+	hash, _ := hex.DecodeString("bc977d652d1853e114ee69bfed4fdaa039149820")
+	TEST_SELF_ID = ToHash(hash)
+}
 
 type TransferForTest struct {
-	transferMap map[string]*Table // map[addr]*Table
+	transferMap sync.Map //// map[addr]*Table
 }
 
-func NewTransferForTest() *TransferForTest {
-	transmap := make(map[string]*Table)
-	transmap["nc"] = tab
-	return &TransferForTest{
-		transferMap: transmap,
+func (tf *TransferForTest) Clear() {
+	os.Remove(TMP_DIR)
+}
+
+func (tf *TransferForTest) fillSpecificData(t *testing.T, nodes []INode) {
+	for i := range nodes {
+		tbID := nodes[i].GetID()
+		tbIP := nodes[i].GetAddr()
+		dbpath, err := ioutil.TempDir(TMP_DIR, fmt.Sprintf("tem_db_%v", i+1))
+		assert.Nil(t, err, "new dbpath err")
+		tb, err := NewTable(tf, tbID, tbIP, dbpath, chooseFromNodes(nodes, 3, i))
+		assert.Nil(t, err, "new table err")
+		tf.transferMap.Store(tbIP, tb)
 	}
 }
 
 func (tf *TransferForTest) Ping(addr string) error {
-	if _, ok := tf.transferMap[addr]; ok {
+	if _, ok := tf.transferMap.Load(addr); ok {
 		return nil
 	}
 	return ERR_TEST_NODE_NOT_FIND
 }
 
 func (tf *TransferForTest) FindNode(addr string, target Hash) ([]INode, error) {
-	if t, ok := tf.transferMap[addr]; ok {
-		return t.GetNodeLocally(target), nil
+	if t, ok := tf.transferMap.Load(addr); ok {
+		return t.(*Table).GetNodeLocally(target), nil
 	}
 	return nil, ERR_TEST_NODE_NOT_FIND
 }
 
+func genIPForTest(id int) string {
+	return fmt.Sprintf("123.123.123.%v:%v", id, id)
+}
+
 func randHashForTest() (ret Hash) {
-	crand.Read(ret[:])
+	ret = NewHash()
+	crand.Read(ret)
 	return
 }
 
@@ -64,7 +87,7 @@ func genBootNodes(num int) []INode {
 	infos := make([]INode, num)
 	for i := range infos {
 		node := &Node{}
-		node.Addr = fmt.Sprintf("10.10.10.%v:%v", rand.Intn(255), rand.Intn(25))
+		node.Addr = genIPForTest(i + 1)
 		node.ID = randHashForTest()
 		infos[i] = node
 		//fmt.Printf("gen nodes:%x,%v\n", infos[i].GetID(), infos[i].GetAddr())
@@ -72,26 +95,45 @@ func genBootNodes(num int) []INode {
 	return infos
 }
 
+func chooseFromNodes(nodes []INode, num, except int) []INode {
+	// it is a test file, so it is caller's duty to let num < len(nodes)
+	from := nodes[:except]
+	if except < len(nodes)-1 {
+		from = append(from, nodes[except+1:len(nodes)]...)
+	}
+	rand.Seed(time.Now().Unix() + int64(num))
+	res := rand.Perm(len(from))
+	choose := make([]INode, num)
+	for i := range res {
+		choose[i] = from[res[i]]
+	}
+	return choose
+}
+
 func TestNewTable(t *testing.T) {
-	tsfer := NewTransferForTest()
+	initTest()
+	nodes := genBootNodes(3)
+	tsfer := &TransferForTest{}
 	dbpath, err := ioutil.TempDir("", TEST_DB_NAME)
+	defer os.Remove(dbpath)
 	require.Nil(t, err, "get temp dir err")
-	tb, err := NewTable(tsfer, TEST_SELF_ID, TEST_SELF_ADDR, dbpath, genBootNodes(10))
+	tb, err := NewTable(tsfer, TEST_SELF_ID, TEST_SELF_ADDR, dbpath, nodes)
 	require.Nil(t, err, "new table err")
 	tb.Start()
 	tb.Stop()
 }
 
 func Test_GetNodeLocally(t *testing.T) {
-	//tab.Start()
-	n1 := &Node{Addr: "na", ID: Hash{43}}
-	n2 := &Node{Addr: "na", ID: Hash{44}}
-	n3 := &Node{Addr: "na", ID: Hash{45}}
-	n4 := &Node{Addr: "nb", ID: Hash{46}}
-	n5 := &Node{Addr: "na", ID: Hash{47}}
-	n6 := &Node{Addr: "na", ID: Hash{48}}
-	n7 := &Node{Addr: "na", ID: Hash{49}}
-	n8 := &Node{Addr: "na", ID: Hash{40}}
+	initTest()
+	tab, _ := NewTable(net, ToHash([]byte{41}), "nc", "", []INode{})
+	n1 := &Node{Addr: "na", ID: ToHash([]byte{43})}
+	n2 := &Node{Addr: "na", ID: ToHash([]byte{44})}
+	n3 := &Node{Addr: "na", ID: ToHash([]byte{45})}
+	n4 := &Node{Addr: "nb", ID: ToHash([]byte{46})}
+	n5 := &Node{Addr: "na", ID: ToHash([]byte{47})}
+	n6 := &Node{Addr: "na", ID: ToHash([]byte{48})}
+	n7 := &Node{Addr: "na", ID: ToHash([]byte{49})}
+	n8 := &Node{Addr: "na", ID: ToHash([]byte{40})}
 	var buckets []*Node
 	buckets = append(buckets, n1)
 	buckets = append(buckets, n2)
@@ -101,17 +143,15 @@ func Test_GetNodeLocally(t *testing.T) {
 	buckets = append(buckets, n6)
 	buckets = append(buckets, n7)
 	buckets = append(buckets, n8)
-
+	tab.String()
 	for i := range buckets {
-		if buckets[i] != nil {
-			tab.add(buckets[i])
-		}
+		tab.add(buckets[i])
 	}
 
-	b := tab.GetNodeLocally(Hash{46})
+	b := tab.GetNodeLocally(ToHash([]byte{46}))
 	for _, node := range buckets {
 		for _, n := range b {
-			if n.GetID() == node.GetID() {
+			if n.GetID().Equal(node.GetID()) {
 				if n.GetAddr() != node.Addr {
 					t.Errorf("addr not equal,id:%v,ori:%v,get:%v", n.GetID(), node.Addr, n.GetAddr())
 				}
@@ -122,15 +162,16 @@ func Test_GetNodeLocally(t *testing.T) {
 }
 
 func Test_closest(t *testing.T) {
-
-	n1 := &Node{Addr: "na", ID: Hash{43}}
-	n2 := &Node{Addr: "na", ID: Hash{44}}
-	n3 := &Node{Addr: "na", ID: Hash{45}}
-	n4 := &Node{Addr: "nb", ID: Hash{46}}
-	n5 := &Node{Addr: "na", ID: Hash{47}}
-	n6 := &Node{Addr: "na", ID: Hash{48}}
-	n7 := &Node{Addr: "na", ID: Hash{49}}
-	n8 := &Node{Addr: "na", ID: Hash{40}}
+	initTest()
+	tab, _ := NewTable(net, ToHash([]byte{41}), "nc", "", []INode{})
+	n1 := &Node{Addr: "na", ID: ToHash([]byte{43})}
+	n2 := &Node{Addr: "na", ID: ToHash([]byte{44})}
+	n3 := &Node{Addr: "na", ID: ToHash([]byte{45})}
+	n4 := &Node{Addr: "nb", ID: ToHash([]byte{46})}
+	n5 := &Node{Addr: "na", ID: ToHash([]byte{47})}
+	n6 := &Node{Addr: "na", ID: ToHash([]byte{48})}
+	n7 := &Node{Addr: "na", ID: ToHash([]byte{49})}
+	n8 := &Node{Addr: "na", ID: ToHash([]byte{40})}
 	var buckets []*Node
 	buckets = append(buckets, n1)
 	buckets = append(buckets, n2)
@@ -145,52 +186,57 @@ func Test_closest(t *testing.T) {
 		tab.add(m)
 	}
 
-	nodes := tab.closest(Hash{46}, 4)
+	nodes := tab.closest(ToHash([]byte{46}), 4)
 	if !bytes.Equal(nodes.entries[0].ID[:], n4.ID[:]) {
 		t.Errorf("wrong nodes closest id, get:%x,expected:%x", nodes.entries[0].ID[:], n4.ID[:])
 	}
 }
 
 func Test_distance(t *testing.T) {
-	a := Hash{8, 8}
-	b := Hash{7, 255}
-	c := Hash{8, 7}
-	d := Hash{9, 255}
+	initTest()
+	a := ToHash([]byte{8, 8})
+	b := ToHash([]byte{7, 255})
+	c := ToHash([]byte{8, 7})
+	d := ToHash([]byte{9, 255})
 	if distance(a, b) != 316 || distance(a, c) != 308 || distance(a, d) != 313 {
 		t.Error("distance wrong")
 	}
 }
 
 func Test_delete(t *testing.T) {
-
-	n5 := &Node{Addr: "na", ID: Hash{47}}
-	nodes := tab.closest(Hash{47}, 4)
-	if !bytes.Equal(nodes.entries[0].ID[:], n5.ID[:]) {
+	initTest()
+	n5 := &Node{Addr: "na", ID: ToHash([]byte{47})}
+	tab, _ := NewTable(net, ToHash([]byte{41}), "nc", "", []INode{})
+	tab.add(n5)
+	nodes := tab.closest(ToHash([]byte{47}), 4)
+	if !nodes.entries[0].ID.Equal(n5.ID) {
 		t.Errorf("wrong nodes closest id, get:%x,expected:%x", nodes.entries[0].ID[:], n5.ID[:])
 	}
 
 	tab.delete(n5)
-	nodes = tab.closest(Hash{47}, 10)
+	nodes = tab.closest(ToHash([]byte{47}), 10)
 
-	if bytes.Equal(nodes.entries[0].ID[:], n5.ID[:]) {
-		t.Error("something wrong")
+	if len(nodes.entries) > 0 && nodes.entries[0].ID.Equal(n5.ID) {
+		t.Error("not deleted")
 	}
 }
 
 func Test_GetNodeByNet(t *testing.T) {
-	tsfer := NewTransferForTest()
+	initTest()
+	tsfer := &TransferForTest{}
 	dbpath, err := ioutil.TempDir("", TEST_DB_NAME)
+	defer os.Remove(dbpath)
 	require.Nil(t, err, "get temp dir err")
 	tb, err := NewTable(tsfer, TEST_SELF_ID, TEST_SELF_ADDR, dbpath, genBootNodes(10))
 	require.Nil(t, err, "new table err")
 	tb.Start()
 	defer tb.Stop()
-	ntab := &Node{Addr: "nc", ID: Hash{41}}
+	ntab := &Node{Addr: "nc", ID: ToHash([]byte{41})}
 	tb.add(ntab)
-	Id := Hash{46}
+	Id := ToHash([]byte{46})
 	nodes := tb.GetNodeByNet(Id)
 	for _, node := range nodes {
-		if node.GetID() == Id {
+		if node.GetID().Equal(Id) {
 			if node.GetAddr() == "nb" {
 				return
 			}
