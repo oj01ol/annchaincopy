@@ -12,8 +12,6 @@ import (
 	"encoding/binary"
 	"math/rand"
 
-	"encoding/binary"
-
 	"github.com/pkg/errors"
 )
 
