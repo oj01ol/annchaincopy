@@ -12,7 +12,7 @@ import (
 	"math/rand"
 
 	"github.com/pkg/errors"
-	"encoding/binary"
+
 )
 
 const (
