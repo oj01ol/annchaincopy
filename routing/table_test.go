@@ -41,22 +41,52 @@ func initTest() {
 
 type TransferForTest struct {
 	transferMap sync.Map //// map[addr]*Table
+	tmpPath     []string
 }
 
 func (tf *TransferForTest) Clear() {
-	os.Remove(TMP_DIR)
+	for i := range tf.tmpPath {
+		os.Remove(tf.tmpPath[i])
+	}
 }
 
-func (tf *TransferForTest) fillSpecificData(t *testing.T, nodes []INode) {
+func (tf *TransferForTest) fillSpecificData(t *testing.T, nodes []INode, initNum int) {
+	tf.tmpPath = make([]string, len(nodes))
 	for i := range nodes {
 		tbID := nodes[i].GetID()
 		tbIP := nodes[i].GetAddr()
-		dbpath, err := ioutil.TempDir(TMP_DIR, fmt.Sprintf("tem_db_%v", i+1))
+		dbpath, err := ioutil.TempDir("", fmt.Sprintf("tem_db_%v", i+1))
 		assert.Nil(t, err, "new dbpath err")
-		tb, err := NewTable(tf, tbID, tbIP, dbpath, chooseFromNodes(nodes, 3, i))
+		tf.tmpPath[i] = dbpath
+		choose := chooseFromNodes(nodes, initNum, i)
+		tb, err := NewTable(tf, tbID, tbIP, dbpath, choose)
+		choosedN := _inodesToNodes(choose)
+		for j := range choosedN {
+			tb.add(choosedN[j])
+		}
 		assert.Nil(t, err, "new table err")
 		tf.transferMap.Store(tbIP, tb)
 	}
+}
+
+func (tf *TransferForTest) ExecAll(exec func(t *Table) bool) {
+	tf.transferMap.Range(func(key, value interface{}) bool {
+		if !exec(value.(*Table)) {
+			return false
+		}
+		return true
+	})
+}
+
+func (tf *TransferForTest) Start(start bool) {
+	tf.ExecAll(func(t *Table) bool {
+		if start {
+			t.Start()
+		} else {
+			t.Stop()
+		}
+		return true
+	})
 }
 
 func (tf *TransferForTest) Ping(addr string) error {
@@ -96,10 +126,18 @@ func genBootNodes(num int) []INode {
 }
 
 func chooseFromNodes(nodes []INode, num, except int) []INode {
-	// it is a test file, so it is caller's duty to let num < len(nodes)
-	from := nodes[:except]
-	if except < len(nodes)-1 {
-		from = append(from, nodes[except+1:len(nodes)]...)
+	cpNodes := make([]INode, len(nodes))
+	copy(cpNodes, nodes)
+	from := cpNodes[:except]
+	if except < len(cpNodes)-1 {
+		from = append(from, cpNodes[except+1:len(cpNodes)]...)
+	}
+	if num >= len(from) {
+		return from
+	}
+	if num == 1 {
+		choose := []INode{from[except%len(from)]}
+		return choose
 	}
 	rand.Seed(time.Now().Unix() + int64(num))
 	res := rand.Perm(len(from))
@@ -143,7 +181,6 @@ func Test_GetNodeLocally(t *testing.T) {
 	buckets = append(buckets, n6)
 	buckets = append(buckets, n7)
 	buckets = append(buckets, n8)
-	tab.String()
 	for i := range buckets {
 		tab.add(buckets[i])
 	}
@@ -225,22 +262,34 @@ func Test_GetNodeByNet(t *testing.T) {
 	initTest()
 	tsfer := &TransferForTest{}
 	dbpath, err := ioutil.TempDir("", TEST_DB_NAME)
+	assert.Nil(t, err, "get temp dir err")
 	defer os.Remove(dbpath)
-	require.Nil(t, err, "get temp dir err")
-	tb, err := NewTable(tsfer, TEST_SELF_ID, TEST_SELF_ADDR, dbpath, genBootNodes(10))
-	require.Nil(t, err, "new table err")
-	tb.Start()
-	defer tb.Stop()
-	ntab := &Node{Addr: "nc", ID: ToHash([]byte{41})}
-	tb.add(ntab)
-	Id := ToHash([]byte{46})
-	nodes := tb.GetNodeByNet(Id)
-	for _, node := range nodes {
-		if node.GetID().Equal(Id) {
-			if node.GetAddr() == "nb" {
-				return
+
+	allNodes := genBootNodes(3)
+
+	// num 1 is special for the test net
+	tsfer.fillSpecificData(t, allNodes, 1)
+	tsfer.Start(true)
+	defer func() {
+		tsfer.Start(false)
+		tsfer.Clear()
+	}()
+
+	for i := range allNodes {
+		local := allNodes[i]
+		var find bool
+		tsfer.ExecAll(func(remote *Table) bool {
+			if remote.self.ID.Equal(local.GetID()) {
+				return true
 			}
+			// stored in other node's table
+			if addr := remote.GetNodeAddr(local.GetID()); addr == local.GetAddr() {
+				find = true
+			}
+			return !find
+		})
+		if !find {
+			t.Errorf("can't get addr of nodes[%x],real addr:%v.\n", local.GetID(), local.GetAddr())
 		}
 	}
-	t.Error("not found by net")
 }

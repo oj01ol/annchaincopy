@@ -426,7 +426,7 @@ func (t *Table) doRefresh(done chan struct{}) {
 
 	t.GetNodeByNet(t.self.GetID())
 	for i := 0; i < 3; i++ {
-		var target Hash
+		target := NewHash()
 		crand.Read(target[:])
 		t.GetNodeByNet(target)
 	}
