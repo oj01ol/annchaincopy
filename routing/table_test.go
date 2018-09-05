@@ -24,17 +24,11 @@ var (
 	TEST_SELF_ADDR = "127.0.0.1:666"
 	TEST_DB_NAME   = "lvdb_test"
 	net            transport
-	inited         bool
 	TMP_DIR        = "./tmp_dir_for_test"
 )
 
 func initTest() {
-	if inited {
-		return
-	}
-	inited = true
-
-	initConfig()
+	Init(NewConfigurable())
 	hash, _ := hex.DecodeString("bc977d652d1853e114ee69bfed4fdaa039149820")
 	TEST_SELF_ID = ToHash(hash)
 }

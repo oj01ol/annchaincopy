@@ -15,12 +15,8 @@ const (
 	tmpDBName = "nodeDB_test"
 )
 
-func initTestDB() {
-	initConfig()
-}
-
 func Test_newNodeDB(t *testing.T) {
-	initTestDB()
+	Init(NewConfigurable())
 	path, err := ioutil.TempDir("", tmpDBName)
 	assert.Nil(t, err, "make tempdir err")
 	self := Hash{}
@@ -31,7 +27,7 @@ func Test_newNodeDB(t *testing.T) {
 }
 
 func Test_Node(t *testing.T) {
-	initTestDB()
+	Init(NewConfigurable())
 	path, err := ioutil.TempDir("", tmpDBName)
 	assert.Nil(t, err, "make tempdir err")
 	self := Hash{}
@@ -61,7 +57,7 @@ func Test_Node(t *testing.T) {
 }
 
 func Test_querySeeds(t *testing.T) {
-	initTestDB()
+	Init(NewConfigurable())
 	path, err := ioutil.TempDir("", tmpDBName)
 	require.Nil(t, err, "make tempdir err")
 	self := ToHash([]byte{7, 63, 74})
