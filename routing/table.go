@@ -180,7 +180,6 @@ type INode interface {
 type transport interface {
 	Ping(addr string) error
 	FindNode(addr string, target Hash) ([]INode, error)
-	//Close()
 }
 
 type nodesByDistance struct {
@@ -290,6 +289,9 @@ func (t *Table) loadSeedNodes() {
 }
 
 func (t *Table) add(n *Node) error {
+	if t.self.GetID().Equal(n.GetID()) {
+		return nil
+	}
 	if n.InComplete() {
 		return errors.New("add node incomplete")
 	}
