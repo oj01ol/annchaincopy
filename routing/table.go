@@ -13,7 +13,6 @@ import (
 	"math/rand"
 
 	"github.com/pkg/errors"
-
 )
 
 var (
@@ -270,6 +269,14 @@ func (t *Table) String() string {
 	return string(jsonBytes)
 }
 
+func (t *Table) buketsCount() []int {
+	slc := make([]int, len(t.buckets))
+	for i := range t.buckets {
+		slc[i] = len(t.buckets[i].entries)
+	}
+	return slc
+}
+
 //transfer bootnodes []*Node to nursery nodes []*tNode
 //remove the useless information
 func (t *Table) setFallbackNodes(nodes []*Node) error {
@@ -444,7 +451,6 @@ func (t *Table) nextRevalidateTime() time.Duration {
 }
 
 func (t *Table) doRefresh(done chan struct{}) {
-
 	t.GetNodeByNet(t.self.GetID())
 	for i := 0; i < 3; i++ {
 		target := NewHash()
@@ -568,10 +574,12 @@ func (t *Table) GetNodeByNet(targetID Hash) []*Node {
 		}
 		// wait for the next reply
 		for _, n := range <-reply {
-			nodeKey := n.GetID().AsKey()
-			if n != nil && !seen[nodeKey] {
-				seen[nodeKey] = true
-				result.push(n, c.findsize)
+			if n != nil {
+				nodeKey := n.GetID().AsKey()
+				if !seen[nodeKey] {
+					seen[nodeKey] = true
+					result.push(n, c.findsize)
+				}
 			}
 		}
 		pendingQueries--

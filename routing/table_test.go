@@ -19,12 +19,11 @@ import (
 
 var (
 	ERR_TEST_NODE_NOT_FIND = errors.New("test node not find")
-	//, _        =
-	TEST_SELF_ID   Hash
-	TEST_SELF_ADDR = "127.0.0.1:666"
-	TEST_DB_NAME   = "lvdb_test"
-	net            transport
-	TMP_DIR        = "./tmp_dir_for_test"
+	TEST_SELF_ID           Hash
+	TEST_SELF_ADDR         = "127.0.0.1:666"
+	TEST_DB_NAME           = "lvdb_test"
+	net                    transport
+	TMP_DIR                = "./tmp_dir_for_test"
 )
 
 func initTest() {
@@ -52,7 +51,7 @@ func (tf *TransferForTest) fillSpecificData(t *testing.T, nodes []INode, initNum
 		dbpath, err := ioutil.TempDir("", fmt.Sprintf("tem_db_%v", i+1))
 		assert.Nil(t, err, "new dbpath err")
 		tf.tmpPath[i] = dbpath
-		choose := chooseFromNodes(nodes, initNum, i)
+		choose := chooseFromNodes(nodes /*[:i+1]*/, initNum, i)
 		tb, err := NewTable(tf, tbID, tbIP, dbpath, choose)
 		choosedN := _inodesToNodes(choose)
 		for j := range choosedN {
@@ -60,6 +59,46 @@ func (tf *TransferForTest) fillSpecificData(t *testing.T, nodes []INode, initNum
 		}
 		assert.Nil(t, err, "new table err")
 		tf.transferMap.Store(tbIP, tb)
+	}
+}
+
+func (tf *TransferForTest) findNodeForcely(t *testing.T) {
+	tf.ExecAll(func(tb *Table) bool {
+
+		targetID := tb.self.GetID()
+		result := tb.closest(targetID, c.findsize)
+		seen := make(map[HashKey]bool)
+
+		for i := 0; i < len(result.entries); i++ {
+			fromNode := result.entries[i]
+			reply := make(chan []*Node, c.alpha+1)
+			tb.findNode(fromNode, targetID, reply)
+			tf.onReq(fromNode.Addr, tb.self)
+			for i := 0; i < c.alpha; i++ {
+				targetID = NewHash()
+				crand.Read(targetID[:])
+				tb.findNode(fromNode, targetID, reply)
+				tf.onReq(fromNode.Addr, tb.self)
+			}
+			for _, retNode := range <-reply {
+				//fmt.Println("======from====", fromNode.Addr, retNode.Addr)
+				if retNode != nil {
+					nodeKey := retNode.GetID().AsKey()
+					if !seen[nodeKey] {
+						seen[nodeKey] = true
+						result.push(retNode, c.findsize)
+					}
+				}
+			}
+		}
+
+		return true
+	})
+}
+
+func (tf *TransferForTest) onReq(addr string, reqN INode) {
+	if t, ok := tf.transferMap.Load(addr); ok {
+		t.(*Table).OnReceiveReq(reqN)
 	}
 }
 
@@ -92,7 +131,8 @@ func (tf *TransferForTest) Ping(addr string) error {
 
 func (tf *TransferForTest) FindNode(addr string, target Hash) ([]INode, error) {
 	if t, ok := tf.transferMap.Load(addr); ok {
-		return t.(*Table).GetNodeLocally(target), nil
+		tbb := t.(*Table)
+		return tbb.GetNodeLocally(target), nil
 	}
 	return nil, ERR_TEST_NODE_NOT_FIND
 }
@@ -104,6 +144,9 @@ func genIPForTest(id int) string {
 func randHashForTest() (ret Hash) {
 	ret = NewHash()
 	crand.Read(ret)
+	//ret[0] = 'a'
+	//	ret[1] = 'a'
+	//	ret[2] = 'a'
 	return
 }
 
@@ -119,6 +162,8 @@ func genBootNodes(num int) []INode {
 	return infos
 }
 
+// chooseFromNodes choose randum num nodes in param 'nodes'
+// except nodes index except
 func chooseFromNodes(nodes []INode, num, except int) []INode {
 	cpNodes := make([]INode, len(nodes))
 	copy(cpNodes, nodes)
@@ -133,10 +178,10 @@ func chooseFromNodes(nodes []INode, num, except int) []INode {
 		choose := []INode{from[except%len(from)]}
 		return choose
 	}
-	rand.Seed(time.Now().Unix() + int64(num))
+	rand.Seed(time.Now().UnixNano())
 	res := rand.Perm(len(from))
 	choose := make([]INode, num)
-	for i := range res {
+	for i := range res[:num] {
 		choose[i] = from[res[i]]
 	}
 	return choose
@@ -261,7 +306,7 @@ func Test_GetNodeByNet(t *testing.T) {
 
 	allNodes := genBootNodes(3)
 
-	// num 1 is special for the test net
+	// A{B},B{C},C{A},test whether A,B,C can connect to each other
 	tsfer.fillSpecificData(t, allNodes, 1)
 	tsfer.Start(true)
 	defer func() {
@@ -285,5 +330,83 @@ func Test_GetNodeByNet(t *testing.T) {
 		if !find {
 			t.Errorf("can't get addr of nodes[%x],real addr:%v.\n", local.GetID(), local.GetAddr())
 		}
+	}
+}
+
+func Test_BrainSplitRate(t *testing.T) {
+	initTest()
+	tsfer := &TransferForTest{}
+	dbpath, err := ioutil.TempDir("", TEST_DB_NAME)
+	assert.Nil(t, err, "get temp dir err")
+	defer os.Remove(dbpath)
+
+	var (
+		NODES_NUM         = 500
+		INITIAL_NODES_NUM = 3
+		TEST_NUM          = 5
+	)
+	defer func() {
+		tsfer.Start(false)
+	}()
+
+	t.Logf("\nall num:%v,initial num:%v.\n",
+		NODES_NUM, INITIAL_NODES_NUM)
+
+	for i := 0; i < TEST_NUM; i++ {
+		allNodes := genBootNodes(NODES_NUM)
+
+		tsfer.fillSpecificData(t, allNodes, INITIAL_NODES_NUM)
+		tsfer.findNodeForcely(t)
+		tsfer.Start(true)
+
+		fmt.Println()
+
+		//	tsfer.ExecAll(func(t *Table) bool {
+		//		fmt.Println("=====", t.self.Addr, t.buketsCount())
+		//		return true
+		//	})
+
+		fmt.Println()
+
+		var canFind bool
+		var notFound, found int
+		cantFind := make(map[string][]string) // map[from node][](cant find node)
+		missNode := make(map[string]bool)     // map[splite node]
+
+		for i := range allNodes {
+			local := allNodes[i]
+			canFind = false
+			tsfer.ExecAll(func(remote *Table) bool {
+				if remote.self.ID.Equal(local.GetID()) {
+					return true
+				}
+				// stored in other node's table
+				if addr := remote.GetNodeAddr(local.GetID()); addr == local.GetAddr() {
+					found++
+					canFind = true
+				} else {
+					if v, ok := cantFind[remote.self.Addr]; ok {
+						cantFind[remote.self.Addr] = append(v, local.GetAddr())
+					} else {
+						cantFind[remote.self.Addr] = []string{local.GetAddr()}
+					}
+					notFound++
+				}
+				return true
+			})
+			if !canFind {
+				missNode[local.GetAddr()] = true
+			}
+		}
+		//	for k, v := range cantFind {
+		//		fmt.Printf("from node:%v,cant find:%v\n", k, v)
+		//	}
+		for k, _ := range missNode {
+			fmt.Println("miss node:", k)
+		}
+		t.Logf("\nnot found num:%v,found num:%v,rate:%v\n",
+			notFound, found, float32(notFound)/float32(notFound+found)*100)
+		tsfer.Clear()
+		fmt.Println("==============================")
 	}
 }
