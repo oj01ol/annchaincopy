@@ -269,6 +269,14 @@ func (t *Table) String() string {
 	return string(jsonBytes)
 }
 
+func (t *Table) buketsCount() []int {
+	slc := make([]int, len(t.buckets))
+	for i := range t.buckets {
+		slc[i] = len(t.buckets[i].entries)
+	}
+	return slc
+}
+
 //transfer bootnodes []*Node to nursery nodes []*tNode
 //remove the useless information
 func (t *Table) setFallbackNodes(nodes []*Node) error {
@@ -295,6 +303,24 @@ func (t *Table) add(n *Node) error {
 	if n.InComplete() {
 		return errors.New("add node incomplete")
 	}
+	result := t.closest(n.GetID(), 1)
+	if len(result.entries) != 0 {
+		dutyn := result.entries[0]
+		if distance(t.self.GetID(), n.GetID()) <= distance(dutyn.GetID(), n.GetID()) {
+			t.mutex.Lock()
+			nb := t.bucket(n.GetID())
+			if len(nb.entries) >= 2*c.bucketSize {
+				t.addReplacement(nb, n)
+			} else {
+				n.UpdateAddTime(time.Now())
+				nb.entries = pushNode(nb.entries, n, 2*c.bucketSize)
+				nb.replacements = deleteNode(nb.replacements, n)
+			}
+			t.mutex.Unlock()
+			return nil
+		}
+	}
+
 	t.mutex.Lock()
 	b := t.bucket(n.GetID())
 	if !t.bumpOrAdd(b, n) {
@@ -421,11 +447,10 @@ loop:
 }
 
 func (t *Table) nextRevalidateTime() time.Duration {
-	return time.Duration(rand.Int63n(int64(c.revalidateInterval)))
+	return time.Duration(t.rand.Int63n(int64(c.revalidateInterval)))
 }
 
 func (t *Table) doRefresh(done chan struct{}) {
-
 	t.GetNodeByNet(t.self.GetID())
 	for i := 0; i < 3; i++ {
 		target := NewHash()
@@ -437,7 +462,7 @@ func (t *Table) doRefresh(done chan struct{}) {
 
 func (t *Table) doRevalidate(done chan struct{}) {
 	defer func() { done <- struct{}{} }()
-	bi := rand.Intn(len(t.buckets)) //need seeds
+	bi := t.rand.Intn(len(t.buckets)) //need seeds
 	b := t.buckets[bi]
 	if len(b.entries) == 0 {
 		return
@@ -467,7 +492,7 @@ func (t *Table) replace(b *bucket, last *Node) *Node {
 		b.entries = deleteNode(b.entries, last)
 		return nil
 	}
-	r := b.replacements[rand.Intn(len(b.replacements))]
+	r := b.replacements[t.rand.Intn(len(b.replacements))]
 	b.replacements = deleteNode(b.replacements, r)
 	b.entries[len(b.entries)-1] = r
 	return r
@@ -549,10 +574,12 @@ func (t *Table) GetNodeByNet(targetID Hash) []*Node {
 		}
 		// wait for the next reply
 		for _, n := range <-reply {
-			nodeKey := n.GetID().AsKey()
-			if n != nil && !seen[nodeKey] {
-				seen[nodeKey] = true
-				result.push(n, c.findsize)
+			if n != nil {
+				nodeKey := n.GetID().AsKey()
+				if !seen[nodeKey] {
+					seen[nodeKey] = true
+					result.push(n, c.findsize)
+				}
 			}
 		}
 		pendingQueries--
