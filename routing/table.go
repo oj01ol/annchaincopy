@@ -296,6 +296,24 @@ func (t *Table) add(n *Node) error {
 	if n.InComplete() {
 		return errors.New("add node incomplete")
 	}
+	result := t.closest(n.GetID(), 1)
+	if len(result.entries) != 0 {
+		dutyn := result.entries[0]
+		if distance(t.self.GetID(), n.GetID()) <= distance(dutyn.GetID(), n.GetID()) {
+			t.mutex.Lock()
+			nb := t.bucket(n.GetID())
+			if len(nb.entries) >= 2*c.bucketSize {
+				t.addReplacement(nb, n)
+			} else {
+				n.UpdateAddTime(time.Now())
+				nb.entries = pushNode(nb.entries, n, 2*c.bucketSize)
+				nb.replacements = deleteNode(nb.replacements, n)
+			}
+			t.mutex.Unlock()
+			return nil
+		}
+	}
+
 	t.mutex.Lock()
 	b := t.bucket(n.GetID())
 	if !t.bumpOrAdd(b, n) {
