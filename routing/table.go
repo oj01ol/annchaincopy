@@ -13,7 +13,7 @@ import (
 	"math/rand"
 
 	"github.com/pkg/errors"
-	
+
 )
 
 var (
@@ -422,7 +422,7 @@ loop:
 }
 
 func (t *Table) nextRevalidateTime() time.Duration {
-	return time.Duration(rand.Int63n(int64(c.revalidateInterval)))
+	return time.Duration(t.rand.Int63n(int64(c.revalidateInterval)))
 }
 
 func (t *Table) doRefresh(done chan struct{}) {
@@ -438,7 +438,7 @@ func (t *Table) doRefresh(done chan struct{}) {
 
 func (t *Table) doRevalidate(done chan struct{}) {
 	defer func() { done <- struct{}{} }()
-	bi := rand.Intn(len(t.buckets)) //need seeds
+	bi := t.rand.Intn(len(t.buckets)) //need seeds
 	b := t.buckets[bi]
 	if len(b.entries) == 0 {
 		return
@@ -468,7 +468,7 @@ func (t *Table) replace(b *bucket, last *Node) *Node {
 		b.entries = deleteNode(b.entries, last)
 		return nil
 	}
-	r := b.replacements[rand.Intn(len(b.replacements))]
+	r := b.replacements[t.rand.Intn(len(b.replacements))]
 	b.replacements = deleteNode(b.replacements, r)
 	b.entries[len(b.entries)-1] = r
 	return r
