@@ -184,11 +184,6 @@ type transport interface {
 	FindNode(ctx.Context, string, Hash) ([]INode, error)
 }
 
-type nodesByDistance struct {
-	entries []*Node
-	target  Hash
-}
-
 type Table struct {
 	buckets []*bucket
 	//bucket	[]Node
@@ -305,9 +300,9 @@ func (t *Table) add(n *Node) error {
 	if n.InComplete() {
 		return errors.New("add node incomplete")
 	}
-	result := t.closest(n.GetID(), 1)
-	if len(result.entries) != 0 {
-		dutyn := result.entries[0]
+	entries := t.closestFaster(n.GetID(), 1)
+	if len(entries) != 0 {
+		dutyn := entries[0]
 		if distance(t.self.GetID(), n.GetID()) <= distance(dutyn.GetID(), n.GetID()) {
 			t.mutex.Lock()
 			nb := t.bucket(n.GetID())
@@ -528,9 +523,9 @@ func (t *Table) getNodeLocally(targetID Hash) (ret *Node) {
 
 func (t *Table) getNodesLocally(targetID Hash) []*Node {
 	t.mutex.Lock()
-	result := t.closest(targetID, c.findsize)
+	entries := t.closestFaster(targetID, c.findsize)
 	t.mutex.Unlock()
-	return result.entries
+	return entries
 }
 
 func _nodesToINodes(nodes []*Node) []INode {
@@ -727,18 +722,18 @@ func (t *Table) closest(target Hash, nresults int) *nodesByDistance {
 	return closeSet
 }
 
-func (h *nodesByDistance) push(n *Node, maxElems int) {
-	h.entries = append(h.entries, n)
-	for i, node := range h.entries {
-		if distance(node.GetID(), h.target) > distance(n.GetID(), h.target) {
-			copy(h.entries[i+1:], h.entries[i:])
-			h.entries[i] = n
-			break
+func (t *Table) closestFaster(target Hash, nresults int) []*Node {
+	heap := &SortNodeHeap{}
+	heap.Init(nresults, target)
+	//search all buckets
+	for _, b := range t.buckets {
+		for _, n := range b.entries {
+			if n != nil {
+				heap.PushNode(n)
+			}
 		}
 	}
-	if len(h.entries) > maxElems {
-		h.entries = h.entries[:maxElems]
-	}
+	return heap.ToNodeSlc()
 }
 
 func distance(a Hash, b Hash) int {
