@@ -451,11 +451,15 @@ func (t *Table) nextRevalidateTime() time.Duration {
 }
 
 func (t *Table) doRefresh(done chan struct{}) {
-	t.GetNodeByNet(t.self.GetID())
+	t.doRefreshCallback(done, nil)
+}
+
+func (t *Table) doRefreshCallback(done chan struct{}, deal func(addr string)) {
+	t.GetNodeByNetCallback(t.self.GetID(), deal)
 	for i := 0; i < 3; i++ {
 		target := NewHash()
 		crand.Read(target[:])
-		t.GetNodeByNet(target)
+		t.GetNodeByNetCallback(target, deal)
 	}
 	close(done)
 }
@@ -542,6 +546,10 @@ func (t *Table) OnReceiveReq(node INode) error {
 }
 
 func (t *Table) GetNodeByNet(targetID Hash) []*Node {
+	return t.GetNodeByNetCallback(targetID, nil)
+}
+
+func (t *Table) GetNodeByNetCallback(targetID Hash, deal func(addr string)) []*Node {
 	var (
 		asked          = make(map[HashKey]bool)
 		result         *nodesByDistance
@@ -565,7 +573,7 @@ func (t *Table) GetNodeByNet(targetID Hash) []*Node {
 				seen[nodeKey] = true
 				pendingQueries++
 
-				go t.findNode(n, targetID, reply)
+				go t.findNodeCallback(n, targetID, reply, deal)
 			}
 		}
 		if pendingQueries == 0 {
@@ -589,9 +597,12 @@ func (t *Table) GetNodeByNet(targetID Hash) []*Node {
 
 }
 
-//ask n for the *Node info
 func (t *Table) findNode(n *Node, targetID Hash, reply chan<- []*Node) {
+	t.findNodeCallback(n, targetID, reply, nil)
+}
 
+//ask n for the *Node info
+func (t *Table) findNodeCallback(n *Node, targetID Hash, reply chan<- []*Node, deal func(addr string)) {
 	r, err := t.net.FindNode(n.GetAddr(), targetID)
 	fails := t.db.findFails(n.GetID())
 
@@ -610,6 +621,9 @@ func (t *Table) findNode(n *Node, targetID Hash, reply chan<- []*Node) {
 	for i := range r {
 		nodes[i] = NewNode(r[i].GetID(), r[i].GetAddr())
 		t.add(nodes[i])
+	}
+	if deal != nil {
+		deal(n.GetAddr())
 	}
 	reply <- nodes
 }

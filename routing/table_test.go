@@ -64,34 +64,10 @@ func (tf *TransferForTest) fillSpecificData(t *testing.T, nodes []INode, initNum
 
 func (tf *TransferForTest) findNodeForcely(t *testing.T) {
 	tf.ExecAll(func(tb *Table) bool {
-
-		targetID := tb.self.GetID()
-		result := tb.closest(targetID, c.findsize)
-		seen := make(map[HashKey]bool)
-
-		for i := 0; i < len(result.entries); i++ {
-			fromNode := result.entries[i]
-			reply := make(chan []*Node, c.alpha+1)
-			tb.findNode(fromNode, targetID, reply)
-			tf.onReq(fromNode.Addr, tb.self)
-			for i := 0; i < c.alpha; i++ {
-				targetID = NewHash()
-				crand.Read(targetID[:])
-				tb.findNode(fromNode, targetID, reply)
-				tf.onReq(fromNode.Addr, tb.self)
-			}
-			for _, retNode := range <-reply {
-				//fmt.Println("======from====", fromNode.Addr, retNode.Addr)
-				if retNode != nil {
-					nodeKey := retNode.GetID().AsKey()
-					if !seen[nodeKey] {
-						seen[nodeKey] = true
-						result.push(retNode, c.findsize)
-					}
-				}
-			}
-		}
-
+		done := make(chan struct{})
+		tb.doRefreshCallback(done, func(addr string) {
+			tf.onReq(addr, tb.self)
+		})
 		return true
 	})
 }
@@ -341,7 +317,7 @@ func Test_BrainSplitRate(t *testing.T) {
 	defer os.Remove(dbpath)
 
 	var (
-		NODES_NUM         = 500
+		NODES_NUM         = 200
 		INITIAL_NODES_NUM = 3
 		TEST_NUM          = 5
 	)
