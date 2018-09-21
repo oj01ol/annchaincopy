@@ -2,6 +2,7 @@ package routing
 
 import (
 	"bytes"
+	ctx "context"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -21,6 +22,7 @@ var (
 
 type Hash []byte
 type HashKey = string
+type DealOnGetNodeFunc func(string)
 
 func ToHash(ori []byte) Hash {
 	var h Hash
@@ -178,8 +180,8 @@ type INode interface {
 }
 
 type transport interface {
-	Ping(addr string) error
-	FindNode(addr string, target Hash) ([]INode, error)
+	Ping(string) error
+	FindNode(ctx.Context, string, Hash) ([]INode, error)
 }
 
 type nodesByDistance struct {
@@ -455,11 +457,11 @@ func (t *Table) doRefresh(done chan struct{}) {
 }
 
 func (t *Table) doRefreshCallback(done chan struct{}, deal func(addr string)) {
-	t.GetNodeByNetCallback(t.self.GetID(), deal)
+	t.getNodesByNetCallback(t.self.GetID(), deal, false)
 	for i := 0; i < 3; i++ {
 		target := NewHash()
 		crand.Read(target[:])
-		t.GetNodeByNetCallback(target, deal)
+		t.getNodesByNetCallback(target, deal, false)
 	}
 	close(done)
 }
@@ -506,12 +508,29 @@ func (t *Table) replace(b *bucket, last *Node) *Node {
 //1.find in the bucket
 //2.findnode in the network
 
-func (t *Table) GetNodeLocally(targetID Hash) []INode {
+func (t *Table) GetNodesLocally(targetID Hash) []INode {
+	nodes := t.getNodesLocally(targetID)
+	return _nodesToINodes(nodes)
+}
+
+func (t *Table) getNodeLocally(targetID Hash) (ret *Node) {
+	t.mutex.Lock()
+	bk := t.bucket(targetID)
+	for _, n := range bk.entries {
+		if targetID.Equal(n.GetID()) {
+			ret = n
+			break
+		}
+	}
+	t.mutex.Unlock()
+	return
+}
+
+func (t *Table) getNodesLocally(targetID Hash) []*Node {
 	t.mutex.Lock()
 	result := t.closest(targetID, c.findsize)
 	t.mutex.Unlock()
-
-	return _nodesToINodes(result.entries)
+	return result.entries
 }
 
 func _nodesToINodes(nodes []*Node) []INode {
@@ -531,11 +550,15 @@ func _inodesToNodes(inodes []INode) []*Node {
 }
 
 func (t *Table) GetNodeAddr(targetID Hash) string {
-	nodes := t.GetNodeByNet(targetID)
-	for _, node := range nodes {
-		if targetID.Equal(node.GetID()) {
-			return node.GetAddr()
+	node := t.getNodeLocally(targetID)
+	if node == nil {
+		nodes := t.getNodesByNetCallback(targetID, nil, true)
+		if len(nodes) > 0 {
+			node = nodes[0]
 		}
+	}
+	if node != nil {
+		return node.Addr
 	}
 	return ""
 }
@@ -545,11 +568,11 @@ func (t *Table) OnReceiveReq(node INode) error {
 	return t.add(n)
 }
 
-func (t *Table) GetNodeByNet(targetID Hash) []*Node {
-	return t.GetNodeByNetCallback(targetID, nil)
+func (t *Table) GetNodesByNet(targetID Hash) []*Node {
+	return t.getNodesByNetCallback(targetID, nil, false)
 }
 
-func (t *Table) GetNodeByNetCallback(targetID Hash, deal func(addr string)) []*Node {
+func (t *Table) getNodesByNetCallback(targetID Hash, deal DealOnGetNodeFunc, must bool) (ret []*Node) {
 	var (
 		asked          = make(map[HashKey]bool)
 		result         *nodesByDistance
@@ -563,6 +586,7 @@ func (t *Table) GetNodeByNetCallback(targetID Hash, deal func(addr string)) []*N
 	t.mutex.Lock()
 	result = t.closest(targetID, c.findsize)
 	t.mutex.Unlock()
+	cctx, cancel := ctx.WithCancel(ctx.Background())
 
 	for {
 		for i := 0; i < len(result.entries) && pendingQueries < c.alpha; i++ {
@@ -572,8 +596,7 @@ func (t *Table) GetNodeByNetCallback(targetID Hash, deal func(addr string)) []*N
 				asked[nodeKey] = true
 				seen[nodeKey] = true
 				pendingQueries++
-
-				go t.findNodeCallback(n, targetID, reply, deal)
+				go t.findNodeCallback(cctx, n, targetID, reply, deal)
 			}
 		}
 		if pendingQueries == 0 {
@@ -584,6 +607,13 @@ func (t *Table) GetNodeByNetCallback(targetID Hash, deal func(addr string)) []*N
 		for _, n := range <-reply {
 			if n != nil {
 				nodeKey := n.GetID().AsKey()
+				if must {
+					if targetID.Equal(n.GetID()) {
+						ret = []*Node{n}
+						cancel()
+						break
+					}
+				}
 				if !seen[nodeKey] {
 					seen[nodeKey] = true
 					result.push(n, c.findsize)
@@ -592,18 +622,15 @@ func (t *Table) GetNodeByNetCallback(targetID Hash, deal func(addr string)) []*N
 		}
 		pendingQueries--
 	}
-
-	return result.entries
-
-}
-
-func (t *Table) findNode(n *Node, targetID Hash, reply chan<- []*Node) {
-	t.findNodeCallback(n, targetID, reply, nil)
+	if !must {
+		ret = result.entries
+	}
+	return
 }
 
 //ask n for the *Node info
-func (t *Table) findNodeCallback(n *Node, targetID Hash, reply chan<- []*Node, deal func(addr string)) {
-	r, err := t.net.FindNode(n.GetAddr(), targetID)
+func (t *Table) findNodeCallback(cctx ctx.Context, n *Node, targetID Hash, reply chan<- []*Node, deal DealOnGetNodeFunc) {
+	r, err := t.net.FindNode(cctx, n.GetAddr(), targetID)
 	fails := t.db.findFails(n.GetID())
 
 	if err != nil || len(r) == 0 {
