@@ -2,6 +2,7 @@ package routing
 
 import (
 	"bytes"
+	ctx "context"
 	crand "crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -64,34 +65,10 @@ func (tf *TransferForTest) fillSpecificData(t *testing.T, nodes []INode, initNum
 
 func (tf *TransferForTest) findNodeForcely(t *testing.T) {
 	tf.ExecAll(func(tb *Table) bool {
-
-		targetID := tb.self.GetID()
-		result := tb.closest(targetID, c.findsize)
-		seen := make(map[HashKey]bool)
-
-		for i := 0; i < len(result.entries); i++ {
-			fromNode := result.entries[i]
-			reply := make(chan []*Node, c.alpha+1)
-			tb.findNode(fromNode, targetID, reply)
-			tf.onReq(fromNode.Addr, tb.self)
-			for i := 0; i < c.alpha; i++ {
-				targetID = NewHash()
-				crand.Read(targetID[:])
-				tb.findNode(fromNode, targetID, reply)
-				tf.onReq(fromNode.Addr, tb.self)
-			}
-			for _, retNode := range <-reply {
-				//fmt.Println("======from====", fromNode.Addr, retNode.Addr)
-				if retNode != nil {
-					nodeKey := retNode.GetID().AsKey()
-					if !seen[nodeKey] {
-						seen[nodeKey] = true
-						result.push(retNode, c.findsize)
-					}
-				}
-			}
-		}
-
+		done := make(chan struct{})
+		tb.doRefreshCallback(done, func(addr string) {
+			tf.onReq(addr, tb.self)
+		})
 		return true
 	})
 }
@@ -129,10 +106,10 @@ func (tf *TransferForTest) Ping(addr string) error {
 	return ERR_TEST_NODE_NOT_FIND
 }
 
-func (tf *TransferForTest) FindNode(addr string, target Hash) ([]INode, error) {
+func (tf *TransferForTest) FindNode(cctx ctx.Context, addr string, target Hash) ([]INode, error) {
 	if t, ok := tf.transferMap.Load(addr); ok {
 		tbb := t.(*Table)
-		return tbb.GetNodeLocally(target), nil
+		return tbb.GetNodesLocally(target), nil
 	}
 	return nil, ERR_TEST_NODE_NOT_FIND
 }
@@ -189,18 +166,26 @@ func chooseFromNodes(nodes []INode, num, except int) []INode {
 
 func TestNewTable(t *testing.T) {
 	initTest()
-	nodes := genBootNodes(3)
+	bnodes := genBootNodes(3)
 	tsfer := &TransferForTest{}
 	dbpath, err := ioutil.TempDir("", TEST_DB_NAME)
 	defer os.Remove(dbpath)
 	require.Nil(t, err, "get temp dir err")
-	tb, err := NewTable(tsfer, TEST_SELF_ID, TEST_SELF_ADDR, dbpath, nodes)
+	tb, err := NewTable(tsfer, TEST_SELF_ID, TEST_SELF_ADDR, dbpath, bnodes)
 	require.Nil(t, err, "new table err")
 	tb.Start()
+	nodes := genBootNodes(10)
+	for i := range nodes {
+		tb.add(nodes[i].(*Node))
+	}
+	for i := range nodes {
+		ret := tb.getNodeLocally(nodes[i].GetID())
+		require.NotNil(t, ret, "cant find node locally", nodes[i].GetAddr())
+	}
 	tb.Stop()
 }
 
-func Test_GetNodeLocally(t *testing.T) {
+func Test_GetNodesLocally(t *testing.T) {
 	initTest()
 	tab, _ := NewTable(net, ToHash([]byte{41}), "nc", "", []INode{})
 	n1 := &Node{Addr: "na", ID: ToHash([]byte{43})}
@@ -224,7 +209,7 @@ func Test_GetNodeLocally(t *testing.T) {
 		tab.add(buckets[i])
 	}
 
-	b := tab.GetNodeLocally(ToHash([]byte{46}))
+	b := tab.GetNodesLocally(ToHash([]byte{46}))
 	for _, node := range buckets {
 		for _, n := range b {
 			if n.GetID().Equal(node.GetID()) {
@@ -341,7 +326,7 @@ func Test_BrainSplitRate(t *testing.T) {
 	defer os.Remove(dbpath)
 
 	var (
-		NODES_NUM         = 500
+		NODES_NUM         = 100
 		INITIAL_NODES_NUM = 3
 		TEST_NUM          = 5
 	)
@@ -361,10 +346,10 @@ func Test_BrainSplitRate(t *testing.T) {
 
 		fmt.Println()
 
-		//	tsfer.ExecAll(func(t *Table) bool {
-		//		fmt.Println("=====", t.self.Addr, t.buketsCount())
-		//		return true
-		//	})
+		//tsfer.ExecAll(func(t *Table) bool {
+		//	fmt.Println("=====", t.self.Addr, t.buketsCount())
+		//	return true
+		//})
 
 		fmt.Println()
 
