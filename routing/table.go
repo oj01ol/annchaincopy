@@ -655,6 +655,54 @@ func (t *Table) findNodeCallback(cctx ctx.Context, n *Node, targetID Hash, reply
 	reply <- nodes
 }
 
+func (t *Table) ReadRandomNodes(buf *[]*Node, num int) bool {
+
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+
+	// Find all non-empty buckets and get a fresh slice of their entries.
+	var buckets [][]*Node
+	for _, b := range t.buckets {
+		if len(b.entries) > 0 {
+			buckets = append(buckets, b.entries[:])
+		}
+	}
+	if len(buckets) == 0 {
+		return false
+	}
+	// Shuffle the buckets.
+	for i := len(buckets) - 1; i > 0; i-- {
+		j := t.rand.Intn(len(buckets))
+		buckets[i], buckets[j] = buckets[j], buckets[i]
+	}
+	// Move head of each bucket into buf, removing buckets that become empty.
+	var j int
+	for ; len(*buf) < num; j = (j + 1) % len(buckets) {
+		b := buckets[j]
+		flg := false
+		for _, nod := range *buf {
+			if nod.GetID().Equal(b[0].GetID()) {
+				flg = true
+				break
+			}
+		}
+		if !flg {
+			*buf = append(*buf, b[0])
+		}
+		buckets[j] = b[1:]
+		if len(b) == 1 {
+			buckets = append(buckets[:j], buckets[j+1:]...)
+		}
+		if len(buckets) == 0 {
+			break
+		}
+	}
+	if len(*buf) < num {
+		return false
+	}
+	return true
+}
+
 func (t *Table) delete(n *Node) {
 	t.mutex.Lock()
 	b := t.bucket(n.GetID())
