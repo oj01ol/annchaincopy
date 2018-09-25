@@ -326,7 +326,6 @@ func Test_ReadRandomNodes(t *testing.T) {
 	defer os.Remove(dbpath)
 
 	allNodes := genBootNodes(11)
-	// A{B},B{C},C{A},test whether A,B,C can connect to each other
 	tsfer.fillSpecificData(t, allNodes, 10)
 	tsfer.Start(true)
 	defer func() {
@@ -334,24 +333,29 @@ func Test_ReadRandomNodes(t *testing.T) {
 		tsfer.Clear()
 	}()
 	tsfer.ExecAll(func(remote *Table) bool {
-		var buf []*Node
+		var buf []Hash
 		rsln5 := remote.ReadRandomNodes(buf, 5)
 		if len(rsln5) != 5 {
 			t.Error("rand5 error")
 		}
-		rsln15 := remote.ReadRandomNodes(rsln5, 15)
+		for _, nid := range rsln5 {
+			buf = append(buf, nid.GetID())
+		}
+		rsln15 := remote.ReadRandomNodes(buf, 15)
 		// stored in other node's table
 		if len(rsln15) != 5 {
 			t.Error("rand15 error")
 		}
-		buf = append(rsln5, rsln15...)
+		for _, nid := range rsln15 {
+			buf = append(buf, nid.GetID())
+		}
 		var mnod [11]bool
 		for i, _ := range mnod {
 			mnod[i] = false
 		}
 		for _, nob := range buf {
 			for i, nodeall := range allNodes {
-				if nob.GetID().Equal(nodeall.GetID()) {
+				if nob.Equal(nodeall.GetID()) {
 					mnod[i] = true
 					break
 				}

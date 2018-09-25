@@ -655,12 +655,12 @@ func (t *Table) findNodeCallback(cctx ctx.Context, n *Node, targetID Hash, reply
 	reply <- nodes
 }
 
-func (t *Table) ReadRandomNodes(buf []*Node, num int) []*Node {
+func (t *Table) ReadRandomNodes(buf []Hash, num int) []INode {
 
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
-	needpeer := num - len(buf)
-	if needpeer <= 0 {
+
+	if num <= 0 {
 		return nil
 	}
 	// Find all non-empty buckets and get a fresh slice of their entries.
@@ -681,11 +681,11 @@ func (t *Table) ReadRandomNodes(buf []*Node, num int) []*Node {
 	// Move head of each bucket into buf, removing buckets that become empty.
 	var j int
 	var result []*Node
-	for ; len(result) < needpeer; j = (j + 1) % len(buckets) {
+	for ; len(result) < num; j = (j + 1) % len(buckets) {
 		b := buckets[j]
 		flg := false
-		for _, nod := range buf {
-			if nod.GetID().Equal(b[0].GetID()) {
+		for _, nid := range buf {
+			if nid.Equal(b[0].GetID()) {
 				flg = true
 				break
 			}
@@ -702,7 +702,7 @@ func (t *Table) ReadRandomNodes(buf []*Node, num int) []*Node {
 		}
 	}
 
-	return result
+	return _nodesToINodes(result)
 }
 
 func (t *Table) delete(n *Node) {
