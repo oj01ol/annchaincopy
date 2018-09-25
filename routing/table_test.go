@@ -318,6 +318,73 @@ func Test_GetNodeByNet(t *testing.T) {
 	}
 }
 
+func Test_ReadRandomNodes(t *testing.T) {
+	initTest()
+	tsfer := &TransferForTest{}
+	dbpath, err := ioutil.TempDir("", TEST_DB_NAME)
+	assert.Nil(t, err, "get temp dir err")
+	defer os.Remove(dbpath)
+
+	allNodes := genBootNodes(11)
+	// A{B},B{C},C{A},test whether A,B,C can connect to each other
+	tsfer.fillSpecificData(t, allNodes, 10)
+	tsfer.Start(true)
+	defer func() {
+		tsfer.Start(false)
+		tsfer.Clear()
+	}()
+	tsfer.ExecAll(func(remote *Table) bool {
+		var buf []*Node
+		find := remote.ReadRandomNodes(&buf, 5)
+		if !find {
+			t.Error("rand5 error")
+		}
+		b1 := buf
+		find = remote.ReadRandomNodes(&buf, 15)
+		// stored in other node's table
+		if find {
+			t.Error("rand15 error")
+		}
+
+		for _, nob := range b1 {
+			flg := false
+			for _, nodeall := range allNodes {
+				if nob.GetID().Equal(nodeall.GetID()) {
+					flg = true
+					break
+				}
+			}
+			if !flg {
+				t.Error("rand5 not find")
+			}
+		}
+
+		var mnod [11]bool
+		for i, _ := range mnod {
+			mnod[i] = false
+		}
+		for _, nob := range buf {
+			for i, nodeall := range allNodes {
+				if nob.GetID().Equal(nodeall.GetID()) {
+					mnod[i] = true
+					break
+				}
+			}
+		}
+		for i, _ := range mnod {
+			if !mnod[i] {
+				if !allNodes[i].GetID().Equal(remote.self.GetID()) {
+					t.Error("rand15 not find")
+					return false
+				}
+			}
+		}
+		return true
+
+	})
+
+}
+
 func Test_BrainSplitRate(t *testing.T) {
 	initTest()
 	tsfer := &TransferForTest{}
@@ -330,9 +397,6 @@ func Test_BrainSplitRate(t *testing.T) {
 		INITIAL_NODES_NUM = 3
 		TEST_NUM          = 5
 	)
-	defer func() {
-		tsfer.Start(false)
-	}()
 
 	t.Logf("\nall num:%v,initial num:%v.\n",
 		NODES_NUM, INITIAL_NODES_NUM)
@@ -391,6 +455,7 @@ func Test_BrainSplitRate(t *testing.T) {
 		}
 		t.Logf("\nnot found num:%v,found num:%v,rate:%v\n",
 			notFound, found, float32(notFound)/float32(notFound+found)*100)
+		tsfer.Start(false)
 		tsfer.Clear()
 		fmt.Println("==============================")
 	}
