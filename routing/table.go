@@ -588,6 +588,7 @@ func (t *Table) getNodesByNetCallback(targetID Hash, deal DealOnGetNodeFunc, mus
 	t.mutex.Unlock()
 	cctx, cancel := ctx.WithCancel(ctx.Background())
 
+OUT_FOR:
 	for {
 		for i := 0; i < len(result.entries) && pendingQueries < c.alpha; i++ {
 			n := result.entries[i]
@@ -611,7 +612,7 @@ func (t *Table) getNodesByNetCallback(targetID Hash, deal DealOnGetNodeFunc, mus
 					if targetID.Equal(n.GetID()) {
 						ret = []*Node{n}
 						cancel()
-						break
+						break OUT_FOR
 					}
 				}
 				if !seen[nodeKey] {
