@@ -655,11 +655,14 @@ func (t *Table) findNodeCallback(cctx ctx.Context, n *Node, targetID Hash, reply
 	reply <- nodes
 }
 
-func (t *Table) ReadRandomNodes(buf *[]*Node, num int) bool {
+func (t *Table) ReadRandomNodes(buf []*Node, num int) []*Node {
 
 	t.mutex.Lock()
 	defer t.mutex.Unlock()
-
+	needpeer := num - len(buf)
+	if needpeer <= 0 {
+		return nil
+	}
 	// Find all non-empty buckets and get a fresh slice of their entries.
 	var buckets [][]*Node
 	for _, b := range t.buckets {
@@ -668,7 +671,7 @@ func (t *Table) ReadRandomNodes(buf *[]*Node, num int) bool {
 		}
 	}
 	if len(buckets) == 0 {
-		return false
+		return nil
 	}
 	// Shuffle the buckets.
 	for i := len(buckets) - 1; i > 0; i-- {
@@ -677,17 +680,18 @@ func (t *Table) ReadRandomNodes(buf *[]*Node, num int) bool {
 	}
 	// Move head of each bucket into buf, removing buckets that become empty.
 	var j int
-	for ; len(*buf) < num; j = (j + 1) % len(buckets) {
+	var result []*Node
+	for ; len(result) < needpeer; j = (j + 1) % len(buckets) {
 		b := buckets[j]
 		flg := false
-		for _, nod := range *buf {
+		for _, nod := range buf {
 			if nod.GetID().Equal(b[0].GetID()) {
 				flg = true
 				break
 			}
 		}
 		if !flg {
-			*buf = append(*buf, b[0])
+			result = append(result, b[0])
 		}
 		buckets[j] = b[1:]
 		if len(b) == 1 {
@@ -697,10 +701,8 @@ func (t *Table) ReadRandomNodes(buf *[]*Node, num int) bool {
 			break
 		}
 	}
-	if len(*buf) < num {
-		return false
-	}
-	return true
+
+	return result
 }
 
 func (t *Table) delete(n *Node) {
